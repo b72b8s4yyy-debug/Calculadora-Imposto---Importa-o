@@ -21,6 +21,7 @@ const OLIVE = "#9CB56A";
 const LINE = "#33353D";
 const MUTED = "#9C9587";
 const SURFACE_HOVER = "#242630";
+const FIELD_BORDER = "#5B5F6C";
 const CHART_TOOLTIP_STYLE = {
   contentStyle: { background: PANEL, border: `1px solid ${LINE}`, borderRadius: 4, color: INK },
   labelStyle: { color: MUTED },
@@ -353,8 +354,8 @@ function Field({ label, value, onChange, type = "number", step, suffix, hint, op
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="px-2 py-1.5 text-sm rounded-sm border outline-none"
-          style={{ borderColor: LINE, background: PAPER, color: INK }}
+          className="px-2 py-1.5 text-sm rounded-sm border-2 outline-none"
+          style={{ borderColor: FIELD_BORDER, background: PAPER, color: INK }}
         >
           {options.map((o) => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
         </select>
@@ -366,8 +367,8 @@ function Field({ label, value, onChange, type = "number", step, suffix, hint, op
             value={value}
             readOnly={readOnly}
             onChange={(e) => onChange(type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
-            className="w-full px-2 py-1.5 text-sm rounded-sm border outline-none font-mono"
-            style={{ borderColor: LINE, background: readOnly ? "#1A1B20" : PAPER, color: INK }}
+            className="w-full px-2 py-1.5 text-sm rounded-sm border-2 outline-none font-mono"
+            style={{ borderColor: readOnly ? LINE : FIELD_BORDER, background: readOnly ? "#1A1B20" : PAPER, color: INK }}
           />
           {suffix && <span className="text-xs shrink-0" style={{ color: MUTED }}>{suffix}</span>}
         </div>
@@ -451,7 +452,7 @@ function NCMCombo({ value, headingLabel, descLabel, onSelect }) {
   return (
     <div className="relative col-span-2" ref={boxRef}>
       <span className="text-xs tracking-wide uppercase" style={{ color: MUTED }}>Buscar NCM na tabela oficial</span>
-      <div className="flex items-center gap-1 border rounded-sm px-2 py-1.5 mt-1" style={{ borderColor: LINE, background: PAPER }}>
+      <div className="flex items-center gap-1 border-2 rounded-sm px-2 py-1.5 mt-1" style={{ borderColor: FIELD_BORDER, background: PAPER }}>
         <Search size={14} color={MUTED} />
         <input
           value={query}
@@ -1051,11 +1052,11 @@ export default function ImportCalculator() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide rounded-t-sm border border-b-0"
+            className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide rounded-t-sm border-2"
             style={{
-              borderColor: LINE,
+              borderColor: tab === t ? RUST : "transparent",
               background: tab === t ? PANEL : "transparent",
-              color: tab === t ? NAVY : MUTED,
+              color: tab === t ? INK : MUTED,
             }}
           >
             {t}
