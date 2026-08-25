@@ -498,17 +498,56 @@ export default function ImportCalculator() {
   };
 
   const handleLimparCampos = () => {
-    if (!window.confirm("Limpar todos os campos, mantendo NCM, II e IPI já preenchidos?")) return;
+    if (!window.confirm("Limpar todos os campos do produto, mantendo NCM e os impostos (II, IPI, PIS, COFINS, AFRMM, Siscomex, ICMS) já preenchidos?")) return;
     setState((s) => ({
-      ...DEFAULT_STATE,
+      // Dados do produto — limpos
+      produto: "",
+      fabricante: "",
+      aplicacao: "",
+      paisOrigem: "",
+      cest: "",
+      quantidade: "",
+      precoUnitario: "",
+      cotacao: "",
+      incoterm: "FOB",
+      freteInternoChina: "",
+      freteInternacional: "",
+      seguroInternacional: "",
+      modal: "maritimo",
+      portoEntrada: "",
+      despesasPortuarias: "",
+      despachante: "",
+      agenteCarga: "",
+      armazenagem: "",
+      transportePortoEstoque: "",
+      outrasDespesas: "",
+      precoVendaDesejado: "",
+      precoMaximoMercado: "",
+      // Impostos e classificação fiscal — preservados
       ncm: s.ncm,
       ncmHeading: s.ncmHeading,
       ncmDesc: s.ncmDesc,
       ncmObs: s.ncmObs,
       aliquotaII: s.aliquotaII,
-      aliquotaIPI: s.aliquotaIPI,
       fonteII: s.fonteII,
+      aliquotaIPI: s.aliquotaIPI,
       fonteIPI: s.fonteIPI,
+      aliquotaPIS: s.aliquotaPIS,
+      aliquotaCOFINS: s.aliquotaCOFINS,
+      fontePISCOFINS: s.fontePISCOFINS,
+      afrmmAliquota: s.afrmmAliquota,
+      fonteAFRMM: s.fonteAFRMM,
+      taxaSiscomex: s.taxaSiscomex,
+      fonteSiscomex: s.fonteSiscomex,
+      estadoDestino: s.estadoDestino,
+      aliquotaICMS: s.aliquotaICMS,
+      fcpICMS: s.fcpICMS,
+      fonteICMS: s.fonteICMS,
+      regimeTributario: s.regimeTributario,
+      creditoICMS: s.creditoICMS,
+      creditoPIS: s.creditoPIS,
+      creditoCOFINS: s.creditoCOFINS,
+      creditoIPI: s.creditoIPI,
     }));
     setEditingProductId(null);
     setProductMessage(null);
