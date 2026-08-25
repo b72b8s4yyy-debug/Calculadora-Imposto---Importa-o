@@ -295,6 +295,17 @@ const DEFAULT_SUPPLIERS = [
   { id: 3, nome: "Fornecedor C", precoUnitario: 200 },
 ];
 
+const DEFAULT_ROUTES = [
+  {
+    id: 1, nome: "Marítimo — Santos/SP", modal: "maritimo", portoEntrada: "Santos/SP",
+    freteInternacional: 1200, seguroInternacional: 100, despesasPortuarias: 800, despachante: 600, agenteCarga: 300,
+  },
+  {
+    id: 2, nome: "Aéreo — Guarulhos/SP", modal: "aereo", portoEntrada: "Guarulhos/SP",
+    freteInternacional: 3200, seguroInternacional: 100, despesasPortuarias: 400, despachante: 600, agenteCarga: 250,
+  },
+];
+
 const VOLUMES = [1, 5, 10, 20, 50, 100];
 
 const SCENARIOS = [
@@ -481,7 +492,7 @@ function NCMCombo({ value, headingLabel, descLabel, onSelect }) {
   );
 }
 
-const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Cenários", "Fluxo de Caixa", "Sensibilidade"];
+const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Modal/Rota", "Cenários", "Fluxo de Caixa", "Sensibilidade"];
 
 const SENSITIVITY_VARS = [
   { key: "cotacao", nome: "Cotação do dólar" },
@@ -504,6 +515,7 @@ export default function ImportCalculator() {
 
   const [state, setState] = useState(DEFAULT_STATE);
   const [suppliers, setSuppliers] = useState(DEFAULT_SUPPLIERS);
+  const [routes, setRoutes] = useState(DEFAULT_ROUTES);
   const [tab, setTab] = useState("Dados");
   const [scenarioSelected, setScenarioSelected] = useState("base");
   const [syncStatus, setSyncStatus] = useState("loading"); // loading | synced | saving | offline
@@ -528,6 +540,7 @@ export default function ImportCalculator() {
         if (saved) {
           if (saved.state) setState(saved.state);
           if (saved.suppliers) setSuppliers(saved.suppliers);
+          if (saved.routes) setRoutes(saved.routes);
           if (saved.tab) setTab(saved.tab);
           if (saved.scenarioSelected) setScenarioSelected(saved.scenarioSelected);
           if (saved.products) setProducts(saved.products);
@@ -551,7 +564,7 @@ export default function ImportCalculator() {
     if (!loadedRef.current) return;
     setSyncStatus("saving");
     const timer = setTimeout(() => {
-      saveAppState(clientIdRef.current, { state, suppliers, tab, scenarioSelected, products })
+      saveAppState(clientIdRef.current, { state, suppliers, routes, tab, scenarioSelected, products })
         .then(() => setSyncStatus("synced"))
         .catch((err) => {
           console.error("Falha ao salvar dados:", err);
@@ -559,7 +572,7 @@ export default function ImportCalculator() {
         });
     }, 800);
     return () => clearTimeout(timer);
-  }, [state, suppliers, tab, scenarioSelected, products]);
+  }, [state, suppliers, routes, tab, scenarioSelected, products]);
 
   const set = (key) => (val) => setState((s) => ({ ...s, [key]: val }));
 
@@ -767,6 +780,24 @@ export default function ImportCalculator() {
     return rows.map((r) => ({ ...r, isBest: r.custoUnitario === min }));
   }, [suppliers, state]);
 
+  const routeResults = useMemo(() => {
+    const rows = routes.map((route) => {
+      const r = computeImport({
+        ...state,
+        modal: route.modal,
+        portoEntrada: route.portoEntrada,
+        freteInternacional: toNum(route.freteInternacional),
+        seguroInternacional: toNum(route.seguroInternacional),
+        despesasPortuarias: toNum(route.despesasPortuarias),
+        despachante: toNum(route.despachante),
+        agenteCarga: toNum(route.agenteCarga),
+      });
+      return { ...route, ...r };
+    });
+    const min = Math.min(...rows.map((r) => r.custoUnitario));
+    return rows.map((r) => ({ ...r, isBest: r.custoUnitario === min }));
+  }, [routes, state]);
+
   const productRows = useMemo(() => {
     const enriched = products.map((p) => {
       const r = computeImport(p.state);
@@ -854,6 +885,15 @@ export default function ImportCalculator() {
     setSuppliers((s) => [...s, { id: Date.now(), nome: `Fornecedor ${String.fromCharCode(65 + s.length)}`, precoUnitario: state.precoUnitario }]);
   const removeSupplier = (id) => setSuppliers((s) => s.filter((x) => x.id !== id));
   const updateSupplier = (id, key, val) => setSuppliers((s) => s.map((x) => (x.id === id ? { ...x, [key]: val } : x)));
+
+  const addRoute = () =>
+    setRoutes((r) => [...r, {
+      id: Date.now(), nome: `Rota ${r.length + 1}`, modal: "maritimo", portoEntrada: "",
+      freteInternacional: state.freteInternacional, seguroInternacional: state.seguroInternacional,
+      despesasPortuarias: state.despesasPortuarias, despachante: state.despachante, agenteCarga: state.agenteCarga,
+    }]);
+  const removeRoute = (id) => setRoutes((r) => r.filter((x) => x.id !== id));
+  const updateRoute = (id, key, val) => setRoutes((r) => r.map((x) => (x.id === id ? { ...x, [key]: val } : x)));
 
   const ufAtual = ICMS_STATES.find((x) => x.uf === state.estadoDestino);
 
@@ -1419,6 +1459,83 @@ export default function ImportCalculator() {
             </div>
             <p className="text-xs mt-3" style={{ color: MUTED }}>
               ★ menor custo unitário posto no Brasil — considera frete, seguro e tributos compartilhados do painel de Dados (cotação do dólar incluída), não apenas o preço de fábrica.
+            </p>
+          </div>
+        )}
+
+        {tab === "Modal/Rota" && (
+          <div>
+            <p className="text-xs mb-3" style={{ color: MUTED }}>
+              Compare combinações de modal + porto/aeroporto + despachante + agente de carga, cada uma com seus próprios custos. Os demais dados
+              (preço, quantidade, câmbio, impostos) vêm do painel de Dados, igual à comparação de Fornecedores.
+            </p>
+            <button onClick={addRoute} className="flex items-center gap-1 text-xs font-bold uppercase px-3 py-1.5 rounded-sm border mb-3" style={{ borderColor: NAVY, color: NAVY }}>
+              <Plus size={14} /> Adicionar rota
+            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-left border-b-2" style={{ borderColor: NAVY }}>
+                    <th className="py-2 pr-3">Rota</th>
+                    <th className="py-2 pr-3">Modal</th>
+                    <th className="py-2 pr-3">Porto/Aeroporto</th>
+                    <th className="py-2 pr-3 text-right">Frete intl. (US$)</th>
+                    <th className="py-2 pr-3 text-right">Seguro intl. (US$)</th>
+                    <th className="py-2 pr-3 text-right">Desp. portuárias (BRL)</th>
+                    <th className="py-2 pr-3 text-right">Despachante (BRL)</th>
+                    <th className="py-2 pr-3 text-right">Agente de carga (BRL)</th>
+                    <th className="py-2 pr-3 text-right">Custo unitário Brasil (BRL)</th>
+                    <th className="py-2 pr-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {routeResults.map((rt) => (
+                    <tr key={rt.id} className="border-b" style={{ borderColor: LINE, background: rt.isBest ? "#1E2A18" : "transparent" }}>
+                      <td className="py-1.5 pr-3 font-sans">
+                        <input value={rt.nome} onChange={(e) => updateRoute(rt.id, "nome", e.target.value)} className="w-full bg-transparent outline-none font-sans" />
+                      </td>
+                      <td className="py-1.5 pr-3 font-sans">
+                        <select
+                          value={rt.modal}
+                          onChange={(e) => updateRoute(rt.id, "modal", e.target.value)}
+                          className="bg-transparent outline-none font-sans"
+                          style={{ color: INK }}
+                        >
+                          <option value="maritimo">marítimo</option>
+                          <option value="aereo">aéreo</option>
+                        </select>
+                      </td>
+                      <td className="py-1.5 pr-3 font-sans">
+                        <input value={rt.portoEntrada} onChange={(e) => updateRoute(rt.id, "portoEntrada", e.target.value)} className="w-28 bg-transparent outline-none font-sans" />
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        <input type="number" value={rt.freteInternacional} onChange={(e) => updateRoute(rt.id, "freteInternacional", Number(e.target.value))} className="w-20 text-right bg-transparent outline-none font-mono" />
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        <input type="number" value={rt.seguroInternacional} onChange={(e) => updateRoute(rt.id, "seguroInternacional", Number(e.target.value))} className="w-16 text-right bg-transparent outline-none font-mono" />
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        <input type="number" value={rt.despesasPortuarias} onChange={(e) => updateRoute(rt.id, "despesasPortuarias", Number(e.target.value))} className="w-20 text-right bg-transparent outline-none font-mono" />
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        <input type="number" value={rt.despachante} onChange={(e) => updateRoute(rt.id, "despachante", Number(e.target.value))} className="w-20 text-right bg-transparent outline-none font-mono" />
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        <input type="number" value={rt.agenteCarga} onChange={(e) => updateRoute(rt.id, "agenteCarga", Number(e.target.value))} className="w-20 text-right bg-transparent outline-none font-mono" />
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-bold" style={{ color: rt.isBest ? OLIVE : INK }}>
+                        {fmtBRL(rt.custoUnitario)}{rt.isBest && " ★"}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        <button onClick={() => removeRoute(rt.id)}><Trash2 size={14} color={RUST} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs mt-3" style={{ color: MUTED }}>
+              ★ menor custo unitário posto no Brasil entre as rotas cadastradas. AFRMM só se aplica a rotas com modal marítimo.
             </p>
           </div>
         )}
