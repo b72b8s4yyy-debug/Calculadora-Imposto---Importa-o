@@ -551,7 +551,7 @@ export default function ImportCalculator() {
           if (saved.state) setState(saved.state);
           if (saved.suppliers) setSuppliers(saved.suppliers);
           if (saved.routes) setRoutes(saved.routes);
-          if (saved.tab) setTab(saved.tab);
+          // Aba não é restaurada de propósito — o app sempre abre na Home.
           if (saved.scenarioSelected) setScenarioSelected(saved.scenarioSelected);
           if (saved.products) setProducts(saved.products);
         }
@@ -579,7 +579,7 @@ export default function ImportCalculator() {
     if (!loadedRef.current) return;
     setSyncStatus("saving");
     const timer = setTimeout(() => {
-      saveAppState(clientIdRef.current, { state, suppliers, routes, tab, scenarioSelected, products })
+      saveAppState(clientIdRef.current, { state, suppliers, routes, scenarioSelected, products })
         .then(() => setSyncStatus("synced"))
         .catch((err) => {
           console.error("Falha ao salvar dados:", err);
@@ -587,7 +587,7 @@ export default function ImportCalculator() {
         });
     }, 800);
     return () => clearTimeout(timer);
-  }, [state, suppliers, routes, tab, scenarioSelected, products]);
+  }, [state, suppliers, routes, scenarioSelected, products]);
 
   const set = (key) => (val) => setState((s) => ({ ...s, [key]: val }));
 
