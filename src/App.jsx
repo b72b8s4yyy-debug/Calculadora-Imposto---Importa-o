@@ -185,10 +185,10 @@ const DEFAULT_STATE = {
   creditoIPI: false,
   fonteII: "",
   fonteIPI: "",
-  fontePISCOFINS: "",
+  fontePISCOFINS: "Alíquotas padrão do regime não cumulativo (Lei 10.865/2004): PIS-Importação 2,1% + COFINS-Importação 9,65%. Não variam por NCM nas tabelas oficiais usadas neste app — regimes especiais (ex.: monofásico de autopeças, Lei 10.485/2002) podem ter alíquota diferente; confirme se aplicável ao seu NCM.",
   fonteICMS: ICMS_FONTE,
-  fonteAFRMM: "",
-  fonteSiscomex: "",
+  fonteAFRMM: "Alíquota padrão do AFRMM para carga geral em modal marítimo: 25% do frete internacional (Lei 10.893/2004, Fundo da Marinha Mercante). Algumas cargas/rotas têm redução ou isenção — confirme se aplicável.",
+  fonteSiscomex: "Taxa de Utilização do Siscomex por Declaração de Importação (Receita Federal) — valor de referência atual R$ 154,23 por DI; adições extras têm taxa adicional.",
   precoVendaDesejado: 1200,
   precoMaximoMercado: 1500,
 };
@@ -658,8 +658,9 @@ export default function ImportCalculator() {
         <span>
           O NCM é buscado automaticamente na <b>Tabela NCM vigente em 25/08/2026</b> que você enviou, e a alíquota de ICMS é preenchida
           automaticamente pelo estado de destino selecionado ({ICMS_FONTE}). II e IPI também são preenchidos automaticamente por NCM a partir da
-          <b> {TEC_TIPI_FONTE}</b>. PIS-Importação e COFINS-Importação não variam por NCM nessas tabelas e continuam editáveis manualmente em Dados → Tributos.
-          Confirme tudo antes de qualquer operação real.
+          <b> {TEC_TIPI_FONTE}</b>. PIS-Importação, COFINS-Importação, AFRMM e Taxa Siscomex já vêm com as alíquotas padrão vigentes (2,1% / 9,65% /
+          25% do frete marítimo / R$ 154,23 por DI) — não variam por NCM nessas tabelas, exceto regimes especiais não cobertos pelos dados
+          carregados (ex.: monofásico de autopeças). Todos seguem editáveis em Dados → Tributos. Confirme tudo antes de qualquer operação real.
         </span>
       </div>
 
@@ -779,7 +780,7 @@ export default function ImportCalculator() {
                 <span className="text-[11px] col-span-2" style={{ color: MUTED }}>Fonte: {ICMS_FONTE}.</span>
               </Section>
 
-              <Section title="Demais tributos (II/IPI automáticos por NCM; PIS/COFINS/AFRMM/Siscomex editáveis)" icon={<AlertTriangle size={14} color={RUST} />}>
+              <Section title="Demais tributos (todos preenchidos automaticamente, editáveis se precisar ajustar)" icon={<AlertTriangle size={14} color={RUST} />}>
                 <Field label="Alíquota II" value={state.aliquotaII} onChange={set("aliquotaII")} step="0.001" suffix="fração" />
                 <Field label="Fonte / data II" value={state.fonteII} onChange={set("fonteII")} type="text" />
                 <Field label="Alíquota IPI" value={state.aliquotaIPI} onChange={set("aliquotaIPI")} step="0.001" suffix="fração" />
@@ -792,9 +793,10 @@ export default function ImportCalculator() {
                 <Field label="Taxa Siscomex (por DI)" value={state.taxaSiscomex} onChange={set("taxaSiscomex")} suffix="BRL" />
                 <Field label="Fonte / data Siscomex" value={state.fonteSiscomex} onChange={set("fonteSiscomex")} type="text" />
                 <span className="text-[11px] col-span-2 italic" style={{ color: MUTED }}>
-                  II e IPI são preenchidos automaticamente ao escolher o NCM acima, a partir da {TEC_TIPI_FONTE}, mas seguem editáveis aqui caso você
-                  precise ajustar (ex.: Ex-tarifário aprovado). PIS-Importação, COFINS-Importação, AFRMM e Siscomex não variam por NCM nessas tabelas
-                  e continuam manuais.
+                  II e IPI são preenchidos automaticamente ao escolher o NCM acima, a partir da {TEC_TIPI_FONTE}, e variam por NCM. PIS-Importação
+                  (2,1%), COFINS-Importação (9,65%), AFRMM (25% do frete marítimo) e a Taxa Siscomex (R$ 154,23/DI) já vêm preenchidos com as
+                  alíquotas padrão vigentes (ver campos "Fonte" de cada um) — essas quatro não variam por NCM nas tabelas oficiais, exceto regimes
+                  especiais (ex.: monofásico de autopeças) que não estão nos dados carregados. Todos seguem editáveis aqui caso você precise ajustar.
                 </span>
               </Section>
 
@@ -814,6 +816,32 @@ export default function ImportCalculator() {
                 <Field label="Preço máximo no mercado BR" value={state.precoMaximoMercado} onChange={set("precoMaximoMercado")} suffix="BRL" />
               </Section>
             </div>
+            </div>
+
+            <div className="rounded-sm border p-3 mt-1 mb-3" style={{ borderColor: LINE, background: PANEL }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>
+                Prévia do custo (tempo real — antes de cadastrar)
+              </h3>
+              <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                <StampBadge
+                  label="Custo unitário Brasil"
+                  value={fmtBRL(result.custoUnitario)}
+                  color={OLIVE}
+                  sub={`lote de ${fmtNum(state.quantidade, 0)} un. · ${fmtBRL(result.custoTotal)}`}
+                />
+                <StampBadge
+                  label="Lucro bruto unitário"
+                  value={fmtBRL(lucroUnitario)}
+                  color={lucroUnitario < 0 ? RUST : OLIVE}
+                  sub={`margem ${fmtPct(margemAtual)} sobre preço de venda desejado`}
+                />
+              </div>
+              <Row label="Valor Aduaneiro" value={fmtBRL(result.valorAduaneiro)} />
+              <Row label="II + IPI + PIS + COFINS" value={fmtBRL(result.II + result.IPI + result.PIS + result.COFINS)} indent />
+              <Row label="AFRMM + Taxa Siscomex" value={fmtBRL(result.AFRMM + result.taxaSiscomex)} indent />
+              <Row label={`ICMS ${state.estadoDestino}`} value={fmtBRL(result.ICMS)} indent />
+              <Row label="Despesas aduaneiras e logísticas nacionais" value={fmtBRL(result.despesasAduaneiras + result.despesasLogisticas)} indent />
+              <Row label="= Custo total do lote" value={fmtBRL(result.custoTotal)} bold accent />
             </div>
 
             <div
