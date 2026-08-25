@@ -195,6 +195,7 @@ const DEFAULT_STATE = {
   ncmDesc: "",
   ncmObs: "NCM hipotético — confirmar classificação fiscal antes de uma importação real",
   cest: "",
+  giroEstimado: "",
   quantidade: 20,
   precoUnitario: 200,
   cotacao: 5.40,
@@ -334,6 +335,20 @@ function Row({ label, value, bold, indent, accent }) {
   );
 }
 
+function SortableTh({ label, sortKey, sort, onSort, right }) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={`py-2 pr-3 cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""}`}
+      style={{ color: active ? NAVY : "inherit" }}
+      onClick={() => onSort(sortKey)}
+      title="Clique para ordenar"
+    >
+      {label} {active ? (sort.dir === "asc" ? "▲" : "▼") : ""}
+    </th>
+  );
+}
+
 function StampBadge({ label, value, sub, color }) {
   return (
     <div className="rounded-sm border-2 px-4 py-3 flex-1 min-w-[150px]" style={{ borderColor: color ?? NAVY, background: PANEL }}>
@@ -444,6 +459,7 @@ export default function ImportCalculator() {
   const [products, setProducts] = useState([]);
   const [editingProductId, setEditingProductId] = useState(null);
   const [productMessage, setProductMessage] = useState(null); // { type: "success" | "error", text }
+  const [productSort, setProductSort] = useState({ key: "createdAt", dir: "desc" });
 
   const clientIdRef = useRef(null);
   const loadedRef = useRef(false);
@@ -555,6 +571,7 @@ export default function ImportCalculator() {
       aplicacao: "",
       paisOrigem: "",
       cest: "",
+      giroEstimado: "",
       quantidade: "",
       precoUnitario: "",
       cotacao: "",
@@ -689,6 +706,44 @@ export default function ImportCalculator() {
     const min = Math.min(...rows.map((r) => r.custoUnitario));
     return rows.map((r) => ({ ...r, isBest: r.custoUnitario === min }));
   }, [suppliers, state]);
+
+  const productRows = useMemo(() => {
+    const enriched = products.map((p) => {
+      const r = computeImport(p.state);
+      const precoVenda = toNum(p.state.precoVendaDesejado);
+      const margem = precoVenda > 0 ? (precoVenda - r.custoUnitario) / precoVenda : 0;
+      const giro = toNum(p.state.giroEstimado);
+      const prioridade = margem * giro;
+      return { ...p, r, margem, giro, prioridade };
+    });
+    const { key, dir } = productSort;
+    const getVal = (row) => {
+      switch (key) {
+        case "produto": return (row.state.produto || "").toLowerCase();
+        case "fabricante": return (row.state.fabricante || "").toLowerCase();
+        case "ncm": return row.state.ncm || "";
+        case "quantidade": return toNum(row.state.quantidade);
+        case "precoUnitario": return toNum(row.state.precoUnitario);
+        case "custoUnitario": return row.r.custoUnitario;
+        case "margem": return row.margem;
+        case "giro": return row.giro;
+        case "prioridade": return row.prioridade;
+        case "createdAt": return row.createdAt;
+        default: return 0;
+      }
+    };
+    const sorted = [...enriched].sort((a, b) => {
+      const va = getVal(a), vb = getVal(b);
+      if (va < vb) return dir === "asc" ? -1 : 1;
+      if (va > vb) return dir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [products, productSort]);
+
+  const toggleProductSort = (key) => {
+    setProductSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  };
 
   const scenarioResults = useMemo(
     () => SCENARIOS.map((sc) => ({ sc, r: computeImport(applyScenario(state, sc)) })),
@@ -856,6 +911,7 @@ export default function ImportCalculator() {
                 <NCMCombo value={state.ncm} headingLabel={state.ncmHeading} descLabel={state.ncmDesc} onSelect={selectNCM} />
                 <Field label="NCM (manual, se preferir)" value={state.ncm} onChange={set("ncm")} type="text" />
                 <Field label="CEST (se aplicável)" value={state.cest} onChange={set("cest")} type="text" />
+                <Field label="Giro estimado (opcional)" value={state.giroEstimado} onChange={set("giroEstimado")} suffix="unidades/mês" hint="Usado para calcular a prioridade do produto na tabela de Produtos cadastrados." />
                 <Field label="Observação NCM" value={state.ncmObs} onChange={set("ncmObs")} type="text" full />
               </Section>
 
@@ -1004,44 +1060,53 @@ export default function ImportCalculator() {
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="text-left border-b-2" style={{ borderColor: NAVY }}>
-                        <th className="py-2 pr-3">Produto</th>
-                        <th className="py-2 pr-3">Fabricante</th>
-                        <th className="py-2 pr-3">NCM</th>
-                        <th className="py-2 pr-3 text-right">Quantidade</th>
-                        <th className="py-2 pr-3 text-right">Preço unit. (US$)</th>
-                        <th className="py-2 pr-3 text-right">Custo unit. final (BRL)</th>
-                        <th className="py-2 pr-3">Cadastrado em</th>
+                        <SortableTh label="Produto" sortKey="produto" sort={productSort} onSort={toggleProductSort} />
+                        <SortableTh label="Fabricante" sortKey="fabricante" sort={productSort} onSort={toggleProductSort} />
+                        <SortableTh label="NCM" sortKey="ncm" sort={productSort} onSort={toggleProductSort} />
+                        <SortableTh label="Quantidade" sortKey="quantidade" sort={productSort} onSort={toggleProductSort} right />
+                        <SortableTh label="Preço unit. (US$)" sortKey="precoUnitario" sort={productSort} onSort={toggleProductSort} right />
+                        <SortableTh label="Custo unit. final (BRL)" sortKey="custoUnitario" sort={productSort} onSort={toggleProductSort} right />
+                        <SortableTh label="Margem %" sortKey="margem" sort={productSort} onSort={toggleProductSort} right />
+                        <SortableTh label="Giro (un/mês)" sortKey="giro" sort={productSort} onSort={toggleProductSort} right />
+                        <SortableTh label="Prioridade" sortKey="prioridade" sort={productSort} onSort={toggleProductSort} right />
+                        <SortableTh label="Cadastrado em" sortKey="createdAt" sort={productSort} onSort={toggleProductSort} />
                         <th className="py-2 pr-3">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="font-mono">
-                      {products.map((p) => {
-                        const r = computeImport(p.state);
-                        return (
-                          <tr
-                            key={p.id}
-                            className="border-b"
-                            style={{ borderColor: LINE, background: editingProductId === p.id ? "#1E2A18" : "transparent" }}
-                          >
-                            <td className="py-1.5 pr-3 font-sans">{p.state.produto}</td>
-                            <td className="py-1.5 pr-3 font-sans">{p.state.fabricante}</td>
-                            <td className="py-1.5 pr-3">{p.state.ncm}</td>
-                            <td className="py-1.5 pr-3 text-right">{fmtNum(p.state.quantidade, 0)}</td>
-                            <td className="py-1.5 pr-3 text-right">{fmtUSD(p.state.precoUnitario)}</td>
-                            <td className="py-1.5 pr-3 text-right font-bold" style={{ color: OLIVE }}>{fmtBRL(r.custoUnitario)}</td>
-                            <td className="py-1.5 pr-3 font-sans">{new Date(p.createdAt).toLocaleDateString("pt-BR")}</td>
-                            <td className="py-1.5 pr-3 font-sans">
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => handleSelectProduct(p.id)} className="text-xs font-bold uppercase" style={{ color: NAVY }}>Editar</button>
-                                <button onClick={() => handleDuplicateProduct(p.id)} className="text-xs font-bold uppercase" style={{ color: MUTED }}>Duplicar</button>
-                                <button onClick={() => handleDeleteProduct(p.id)} title="Excluir"><Trash2 size={14} color={RUST} /></button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {productRows.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="border-b"
+                          style={{ borderColor: LINE, background: editingProductId === p.id ? "#1E2A18" : "transparent" }}
+                        >
+                          <td className="py-1.5 pr-3 font-sans">{p.state.produto}</td>
+                          <td className="py-1.5 pr-3 font-sans">{p.state.fabricante}</td>
+                          <td className="py-1.5 pr-3">{p.state.ncm}</td>
+                          <td className="py-1.5 pr-3 text-right">{fmtNum(p.state.quantidade, 0)}</td>
+                          <td className="py-1.5 pr-3 text-right">{fmtUSD(p.state.precoUnitario)}</td>
+                          <td className="py-1.5 pr-3 text-right font-bold" style={{ color: OLIVE }}>{fmtBRL(p.r.custoUnitario)}</td>
+                          <td className="py-1.5 pr-3 text-right">{fmtPct(p.margem)}</td>
+                          <td className="py-1.5 pr-3 text-right">{p.giro > 0 ? fmtNum(p.giro, 0) : "—"}</td>
+                          <td className="py-1.5 pr-3 text-right font-bold" style={{ color: p.prioridade > 0 ? RUST : "inherit" }}>
+                            {p.giro > 0 ? fmtNum(p.prioridade, 1) : "—"}
+                          </td>
+                          <td className="py-1.5 pr-3 font-sans">{new Date(p.createdAt).toLocaleDateString("pt-BR")}</td>
+                          <td className="py-1.5 pr-3 font-sans">
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleSelectProduct(p.id)} className="text-xs font-bold uppercase" style={{ color: NAVY }}>Editar</button>
+                              <button onClick={() => handleDuplicateProduct(p.id)} className="text-xs font-bold uppercase" style={{ color: MUTED }}>Duplicar</button>
+                              <button onClick={() => handleDeleteProduct(p.id)} title="Excluir"><Trash2 size={14} color={RUST} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
+                  <p className="text-[11px] mt-2" style={{ color: MUTED }}>
+                    Clique no cabeçalho de qualquer coluna para ordenar. Prioridade = margem % × giro estimado (un./mês) — maior prioridade indica
+                    produtos que vale mais a pena focar (boa margem e/ou giro alto). "—" quando o giro estimado não foi informado.
+                  </p>
                 </div>
               )}
             </Section>
