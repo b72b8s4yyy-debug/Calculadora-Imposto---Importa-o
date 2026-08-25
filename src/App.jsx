@@ -499,7 +499,7 @@ function NCMCombo({ value, headingLabel, descLabel, onSelect }) {
   );
 }
 
-const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Modal/Rota", "Cenários", "Fluxo de Caixa", "Sensibilidade", "Histórico"];
+const TABS = ["Home", "Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Modal/Rota", "Cenários", "Fluxo de Caixa", "Sensibilidade", "Histórico"];
 
 const SENSITIVITY_VARS = [
   { key: "cotacao", nome: "Cotação do dólar" },
@@ -526,7 +526,7 @@ export default function ImportCalculator() {
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotMessage, setSnapshotMessage] = useState(null);
   const [compareIds, setCompareIds] = useState([]);
-  const [tab, setTab] = useState("Dados");
+  const [tab, setTab] = useState("Home");
   const [scenarioSelected, setScenarioSelected] = useState("base");
   const [syncStatus, setSyncStatus] = useState("loading"); // loading | synced | saving | offline
 
@@ -1065,6 +1065,79 @@ export default function ImportCalculator() {
       </div>
 
       <div className="p-4" style={{ background: PANEL, borderTop: `1px solid ${LINE}` }}>
+        {tab === "Home" && (
+          <div>
+            <div className="flex flex-col items-center text-center mb-6 mt-2">
+              <img src={lorLogo} alt="LOR Imports" className="h-24 w-auto mb-3" />
+              <h2 className="text-base font-bold" style={{ color: INK }}>{state.produto || "Nenhum produto em edição"}</h2>
+              <p className="text-xs" style={{ color: MUTED }}>{state.aplicacao}</p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              <StampBadge label="Custo unitário Brasil" value={fmtBRL(result.custoUnitario)} color={OLIVE} sub={`lote ${fmtBRL(result.custoTotal)}`} />
+              <StampBadge
+                label="Lucro líquido real / unidade"
+                value={fmtBRL(saida.lucroLiquidoRealUnitario)}
+                color={saida.lucroLiquidoRealUnitario < 0 ? RUST : OLIVE}
+                sub="após tributos de saída"
+              />
+              <StampBadge label="Margem % sobre venda" value={fmtPct(margemAtual)} color={NAVY} sub={`markup ${fmtPct(markupAtual)}`} />
+              <StampBadge
+                label="Capital de giro máximo"
+                value={fmtBRL(Math.abs(cashFlow.capitalGiroMax))}
+                color={RUST}
+                sub={`ciclo de ${fmtNum(cashFlow.diasCicloTotal, 0)} dias`}
+              />
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-4 mb-6">
+              <div className="rounded-sm border p-3" style={{ borderColor: LINE }}>
+                <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>Custo unitário por cenário</h3>
+                <div style={{ width: "100%", height: 200 }}>
+                  <ResponsiveContainer>
+                    <BarChart data={scenarioResults.map(({ sc, r }) => ({ nome: sc.nome, custoUnitario: r.custoUnitario, fill: sc.color }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
+                      <XAxis dataKey="nome" tick={{ fontSize: 11, fill: MUTED }} />
+                      <YAxis tick={{ fontSize: 11, fill: MUTED }} tickFormatter={(v) => `R$${Math.round(v)}`} />
+                      <Tooltip formatter={(v) => fmtBRL(v)} {...CHART_TOOLTIP_STYLE} />
+                      <Bar dataKey="custoUnitario" name="Custo unitário" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded-sm border p-3" style={{ borderColor: LINE }}>
+                <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>Caixa acumulado (fluxo de caixa)</h3>
+                <div style={{ width: "100%", height: 200 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={cashFlow.curva.map((e) => ({ dia: e.dia, acumulado: e.acumulado, label: e.label }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
+                      <XAxis dataKey="dia" tick={{ fontSize: 11, fill: MUTED }} />
+                      <YAxis tick={{ fontSize: 11, fill: MUTED }} tickFormatter={(v) => `R$${Math.round(v)}`} />
+                      <Tooltip formatter={(v) => fmtBRL(v)} {...CHART_TOOLTIP_STYLE} />
+                      <ReferenceLine y={0} stroke={MUTED} />
+                      <Line type="stepAfter" dataKey="acumulado" stroke={RUST} strokeWidth={2} dot={{ r: 3 }} name="Caixa acumulado" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>Ir para</h3>
+            <div className="flex flex-wrap gap-2">
+              {TABS.filter((t) => t !== "Home").map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide rounded-sm border-2"
+                  style={{ borderColor: FIELD_BORDER, color: INK, background: PAPER }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {tab === "Dados" && (
           <div>
             <div className="flex flex-wrap items-end gap-3 mb-4">
