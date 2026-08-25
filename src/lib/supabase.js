@@ -35,3 +35,25 @@ export async function saveAppState(clientId, data) {
     .upsert({ client_id: clientId, data, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
+
+export async function listSnapshots(clientId) {
+  const { data, error } = await supabase
+    .from("snapshots")
+    .select("id, label, data, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveSnapshot(clientId, label, data) {
+  const { error } = await supabase
+    .from("snapshots")
+    .insert({ client_id: clientId, label: label || null, data });
+  if (error) throw error;
+}
+
+export async function deleteSnapshot(id) {
+  const { error } = await supabase.from("snapshots").delete().eq("id", id);
+  if (error) throw error;
+}

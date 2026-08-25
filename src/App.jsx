@@ -4,7 +4,7 @@ import {
   BarChart, Bar, ReferenceLine
 } from "recharts";
 import { Ship, AlertTriangle, Anchor, Package, Plus, Trash2, Info, Search, DollarSign, CheckCircle2 } from "lucide-react";
-import { getClientId, loadAppState, saveAppState } from "./lib/supabase";
+import { getClientId, loadAppState, saveAppState, listSnapshots, saveSnapshot, deleteSnapshot } from "./lib/supabase";
 import lorLogo from "./assets/lor-imports-logo.png";
 
 // ---------------------------------------------------------------------------
@@ -498,7 +498,7 @@ function NCMCombo({ value, headingLabel, descLabel, onSelect }) {
   );
 }
 
-const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Modal/Rota", "Cenários", "Fluxo de Caixa", "Sensibilidade"];
+const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Modal/Rota", "Cenários", "Fluxo de Caixa", "Sensibilidade", "Histórico"];
 
 const SENSITIVITY_VARS = [
   { key: "cotacao", nome: "Cotação do dólar" },
@@ -522,6 +522,9 @@ export default function ImportCalculator() {
   const [state, setState] = useState(DEFAULT_STATE);
   const [suppliers, setSuppliers] = useState(DEFAULT_SUPPLIERS);
   const [routes, setRoutes] = useState(DEFAULT_ROUTES);
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapshotMessage, setSnapshotMessage] = useState(null);
+  const [compareIds, setCompareIds] = useState([]);
   const [tab, setTab] = useState("Dados");
   const [scenarioSelected, setScenarioSelected] = useState("base");
   const [syncStatus, setSyncStatus] = useState("loading"); // loading | synced | saving | offline
@@ -560,6 +563,11 @@ export default function ImportCalculator() {
       .finally(() => {
         if (!cancelled) loadedRef.current = true;
       });
+    listSnapshots(clientIdRef.current)
+      .then((rows) => {
+        if (!cancelled) setSnapshots(rows);
+      })
+      .catch((err) => console.error("Falha ao carregar histórico de simulações:", err));
     return () => {
       cancelled = true;
     };
@@ -858,6 +866,13 @@ export default function ImportCalculator() {
     return rows.sort((a, b) => b.range - a.range);
   }, [state]);
 
+  const compareSnapshots = useMemo(() => {
+    return compareIds
+      .map((id) => snapshots.find((s) => s.id === id))
+      .filter(Boolean)
+      .map((snap) => ({ snap, r: computeImport(snap.data?.state || DEFAULT_STATE) }));
+  }, [compareIds, snapshots]);
+
   const scenarioResults = useMemo(
     () => SCENARIOS.map((sc) => ({ sc, r: computeImport(applyScenario(state, sc)) })),
     [state]
@@ -903,6 +918,59 @@ export default function ImportCalculator() {
     }]);
   const removeRoute = (id) => setRoutes((r) => r.filter((x) => x.id !== id));
   const updateRoute = (id, key, val) => setRoutes((r) => r.map((x) => (x.id === id ? { ...x, [key]: val } : x)));
+
+  const refreshSnapshots = () => {
+    listSnapshots(clientIdRef.current)
+      .then((rows) => setSnapshots(rows))
+      .catch((err) => console.error("Falha ao atualizar histórico de simulações:", err));
+  };
+
+  const handleSaveSnapshot = () => {
+    const label = window.prompt("Etiqueta para essa simulação (opcional):", state.produto || "");
+    if (label === null) return; // cancelado
+    saveSnapshot(clientIdRef.current, label.trim(), { state, suppliers, products, routes })
+      .then(() => {
+        setSnapshotMessage({ type: "success", text: "Simulação salva no histórico." });
+        refreshSnapshots();
+      })
+      .catch((err) => {
+        console.error("Falha ao salvar simulação:", err);
+        setSnapshotMessage({ type: "error", text: "Não foi possível salvar a simulação — verifique a conexão." });
+      });
+  };
+
+  const handleLoadSnapshot = (snap) => {
+    if (!window.confirm(`Carregar a simulação "${snap.label || "(sem etiqueta)"}"? Isso substitui os dados atuais de Dados/Fornecedores/Produtos/Modal-Rota.`)) return;
+    const d = snap.data || {};
+    if (d.state) setState(d.state);
+    if (d.suppliers) setSuppliers(d.suppliers);
+    if (d.products) setProducts(d.products);
+    if (d.routes) setRoutes(d.routes);
+    setEditingProductId(null);
+    setTab("Dados");
+    setSnapshotMessage({ type: "success", text: `Simulação "${snap.label || "(sem etiqueta)"}" carregada.` });
+  };
+
+  const handleDeleteSnapshot = (id) => {
+    if (!window.confirm("Excluir essa simulação do histórico? Essa ação não pode ser desfeita.")) return;
+    deleteSnapshot(id)
+      .then(() => {
+        setCompareIds((c) => c.filter((x) => x !== id));
+        refreshSnapshots();
+      })
+      .catch((err) => {
+        console.error("Falha ao excluir simulação:", err);
+        setSnapshotMessage({ type: "error", text: "Não foi possível excluir a simulação." });
+      });
+  };
+
+  const toggleCompareSnapshot = (id) => {
+    setCompareIds((c) => {
+      if (c.includes(id)) return c.filter((x) => x !== id);
+      if (c.length >= 2) return [c[1], id];
+      return [...c, id];
+    });
+  };
 
   const ufAtual = ICMS_STATES.find((x) => x.uf === state.estadoDestino);
 
@@ -1690,6 +1758,85 @@ export default function ImportCalculator() {
             <p className="text-xs mt-3" style={{ color: MUTED }}>
               Custo unitário base atual: {fmtBRL(result.custoUnitario)}. A linha tracejada no gráfico marca esse valor de referência.
             </p>
+          </div>
+        )}
+
+        {tab === "Histórico" && (
+          <div>
+            <div
+              className="flex items-center justify-between gap-3 flex-wrap mb-4 px-3 py-3 rounded-sm border"
+              style={{ borderColor: LINE, background: PANEL }}
+            >
+              <span className="text-xs" style={{ color: snapshotMessage?.type === "error" ? RUST : OLIVE }}>
+                {snapshotMessage?.text || "Salva o estado atual (Dados, Fornecedores, Produtos e Modal/Rota) como um snapshot com data e etiqueta."}
+              </span>
+              <button
+                onClick={handleSaveSnapshot}
+                className="flex items-center gap-1 text-xs font-bold uppercase px-4 py-2 rounded-sm border-2"
+                style={{ borderColor: OLIVE, color: "#FFFFFF", background: OLIVE }}
+              >
+                <CheckCircle2 size={14} /> Salvar simulação atual
+              </button>
+            </div>
+
+            {snapshots.length === 0 ? (
+              <span className="text-xs" style={{ color: MUTED }}>Nenhuma simulação salva ainda.</span>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-left border-b-2" style={{ borderColor: NAVY }}>
+                      <th className="py-2 pr-3">Etiqueta</th>
+                      <th className="py-2 pr-3">Produto</th>
+                      <th className="py-2 pr-3">Salvo em</th>
+                      <th className="py-2 pr-3 text-center">Comparar</th>
+                      <th className="py-2 pr-3">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {snapshots.map((snap) => (
+                      <tr key={snap.id} className="border-b" style={{ borderColor: LINE, background: compareIds.includes(snap.id) ? SURFACE_HOVER : "transparent" }}>
+                        <td className="py-1.5 pr-3 font-sans">{snap.label || "(sem etiqueta)"}</td>
+                        <td className="py-1.5 pr-3 font-sans">{snap.data?.state?.produto || "—"}</td>
+                        <td className="py-1.5 pr-3 font-sans">{new Date(snap.created_at).toLocaleString("pt-BR")}</td>
+                        <td className="py-1.5 pr-3 text-center">
+                          <input type="checkbox" checked={compareIds.includes(snap.id)} onChange={() => toggleCompareSnapshot(snap.id)} />
+                        </td>
+                        <td className="py-1.5 pr-3 font-sans">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleLoadSnapshot(snap)} className="text-xs font-bold uppercase" style={{ color: NAVY }}>Carregar</button>
+                            <button onClick={() => handleDeleteSnapshot(snap.id)} title="Excluir"><Trash2 size={14} color={RUST} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] mt-2" style={{ color: MUTED }}>
+                  Marque até duas simulações em "Comparar" para ver os dois resultados lado a lado abaixo.
+                </p>
+              </div>
+            )}
+
+            {compareSnapshots.length === 2 && (
+              <div className="grid md:grid-cols-2 gap-4 mt-4">
+                {compareSnapshots.map(({ snap, r }) => (
+                  <div key={snap.id} className="rounded-sm border p-3" style={{ borderColor: LINE }}>
+                    <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>
+                      {snap.label || "(sem etiqueta)"} — {new Date(snap.created_at).toLocaleDateString("pt-BR")}
+                    </h3>
+                    <Row label="Produto" value={snap.data?.state?.produto || "—"} />
+                    <Row label="NCM" value={snap.data?.state?.ncm || "—"} />
+                    <Row label="Quantidade" value={fmtNum(snap.data?.state?.quantidade, 0)} />
+                    <Row label="Preço unitário" value={fmtUSD(snap.data?.state?.precoUnitario)} />
+                    <Row label="Valor Aduaneiro" value={fmtBRL(r.valorAduaneiro)} />
+                    <Row label="Custo Total" value={fmtBRL(r.custoTotal)} />
+                    <Row label="Custo Unitário" value={fmtBRL(r.custoUnitario)} bold accent />
+                    <Row label="Lucro bruto unitário" value={fmtBRL(toNum(snap.data?.state?.precoVendaDesejado) - r.custoUnitario)} bold />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
