@@ -3,30 +3,54 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, ReferenceLine
 } from "recharts";
-import { Ship, AlertTriangle, Anchor, Package, Plus, Trash2, Info, Search, DollarSign, CheckCircle2 } from "lucide-react";
+import { Ship, AlertTriangle, Anchor, Package, Plus, Trash2, Info, Search, DollarSign, CheckCircle2, Sun, Moon } from "lucide-react";
 import { getClientId, loadAppState, saveAppState, listSnapshots, saveSnapshot, deleteSnapshot } from "./lib/supabase";
-import lorLogo from "./assets/lor-imports-logo.png";
+import lorLogoDark from "./assets/lor-imports-logo-dark.png";
+import lorLogoLight from "./assets/lor-imports-logo-light.png";
 
 // ---------------------------------------------------------------------------
-// Design tokens — modo escuro (letras e acentos de marca em branco, como no
-// logo LOR Imports; laranja/verde permanecem como acentos semânticos, só
-// clareados para manter contraste sobre o fundo escuro).
+// Design tokens — mutáveis de propósito (let, não const): trocar de tema
+// reatribui todos eles a partir de LIGHT_PALETTE/DARK_PALETTE via
+// applyTheme(). Como Field/Row/Section/StampBadge/NCMCombo leem essas
+// variáveis dentro do próprio corpo da função (não em módulo-nível fora de
+// função), cada re-render pega o valor atual automaticamente. As duas
+// exceções que SÃO avaliadas uma única vez no carregamento do módulo — a
+// paleta de cenários e o estilo de tooltip dos gráficos — viram função
+// (getScenarios) ou também são reatribuídas dentro de applyTheme().
 // ---------------------------------------------------------------------------
-const INK = "#F2F0E9";
-const PAPER = "#121316";
-const PANEL = "#1C1E24";
-const NAVY = "#FFFFFF";
-const RUST = "#E2794F";
-const OLIVE = "#9CB56A";
-const LINE = "#33353D";
-const MUTED = "#9C9587";
-const SURFACE_HOVER = "#242630";
-const FIELD_BORDER = "#5B5F6C";
-const CHART_TOOLTIP_STYLE = {
-  contentStyle: { background: PANEL, border: `1px solid ${LINE}`, borderRadius: 4, color: INK },
-  labelStyle: { color: MUTED },
-  itemStyle: { color: INK },
+const DARK_PALETTE = {
+  INK: "#F2F0E9", PAPER: "#121316", PANEL: "#1C1E24", NAVY: "#FFFFFF",
+  RUST: "#E2794F", OLIVE: "#9CB56A", LINE: "#33353D", MUTED: "#9C9587",
+  SURFACE_HOVER: "#242630", FIELD_BORDER: "#5B5F6C",
+  READONLY_BG: "#1A1B20", RUST_TINT_BG: "#241C16",
+  WARNING_BG: "#2A1D14", WARNING_TEXT: "#F5C9A0", HIGHLIGHT_BG: "#1E2A18",
 };
+
+const LIGHT_PALETTE = {
+  INK: "#20241F", PAPER: "#F5F1E6", PANEL: "#FFFFFF", NAVY: "#0E2A3D",
+  RUST: "#B5502E", OLIVE: "#5B6B3F", LINE: "#D9D2BE", MUTED: "#6B6355",
+  SURFACE_HOVER: "#F2ECDA", FIELD_BORDER: "#B8AD90",
+  READONLY_BG: "#EFEAD9", RUST_TINT_BG: "#FBF3E9",
+  WARNING_BG: "#F3E4D8", WARNING_TEXT: "#5C2E13", HIGHLIGHT_BG: "#EAF0E4",
+};
+
+let INK, PAPER, PANEL, NAVY, RUST, OLIVE, LINE, MUTED, SURFACE_HOVER, FIELD_BORDER;
+let READONLY_BG, RUST_TINT_BG, WARNING_BG, WARNING_TEXT, HIGHLIGHT_BG;
+let CHART_TOOLTIP_STYLE;
+
+function applyTheme(name) {
+  const p = name === "light" ? LIGHT_PALETTE : DARK_PALETTE;
+  ({
+    INK, PAPER, PANEL, NAVY, RUST, OLIVE, LINE, MUTED, SURFACE_HOVER, FIELD_BORDER,
+    READONLY_BG, RUST_TINT_BG, WARNING_BG, WARNING_TEXT, HIGHLIGHT_BG,
+  } = p);
+  CHART_TOOLTIP_STYLE = {
+    contentStyle: { background: PANEL, border: `1px solid ${LINE}`, borderRadius: 4, color: INK },
+    labelStyle: { color: MUTED },
+    itemStyle: { color: INK },
+  };
+}
+applyTheme("dark");
 
 // ---------------------------------------------------------------------------
 // Currency / number helpers
@@ -315,7 +339,10 @@ const DEFAULT_ROUTES = [
 
 const VOLUMES = [1, 5, 10, 20, 50, 100];
 
-const SCENARIOS = [
+// Função (não array fixo) porque as cores RUST/NAVY/OLIVE mudam com o tema
+// claro/escuro — precisa ler o valor atual a cada chamada, não um snapshot
+// travado no momento em que o módulo carregou.
+const getScenarios = () => [
   { key: "conservador", nome: "Conservador", color: RUST,
     desc: "Frete mais caro, dólar mais alto, custos portuários maiores",
     cambioMult: 1.08, freteMult: 1.25, despesasMult: 1.15, precoMult: 1.0, qtyMult: 1.0 },
@@ -368,7 +395,7 @@ function Field({ label, value, onChange, type = "number", step, suffix, hint, op
             readOnly={readOnly}
             onChange={(e) => onChange(type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
             className="w-full px-2 py-1.5 text-sm rounded-sm border-2 outline-none font-mono"
-            style={{ borderColor: readOnly ? LINE : FIELD_BORDER, background: readOnly ? "#1A1B20" : PAPER, color: INK }}
+            style={{ borderColor: readOnly ? LINE : FIELD_BORDER, background: readOnly ? READONLY_BG : PAPER, color: INK }}
           />
           {suffix && <span className="text-xs shrink-0" style={{ color: MUTED }}>{suffix}</span>}
         </div>
@@ -527,6 +554,25 @@ export default function ImportCalculator() {
   const [snapshotMessage, setSnapshotMessage] = useState(null);
   const [compareIds, setCompareIds] = useState([]);
   const [tab, setTab] = useState("Home");
+  const [themeName, setThemeName] = useState(() => {
+    try {
+      return localStorage.getItem("calc-import-theme") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  applyTheme(themeName);
+  const lorLogo = themeName === "light" ? lorLogoLight : lorLogoDark;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("calc-import-theme", themeName);
+    } catch {
+      // localStorage indisponível (modo privado, etc.) — tema só não persiste entre sessões.
+    }
+    document.body.style.background = themeName === "light" ? LIGHT_PALETTE.PAPER : DARK_PALETTE.PAPER;
+  }, [themeName]);
   const [scenarioSelected, setScenarioSelected] = useState("base");
   const [syncStatus, setSyncStatus] = useState("loading"); // loading | synced | saving | offline
 
@@ -875,8 +921,8 @@ export default function ImportCalculator() {
   }, [compareIds, snapshots]);
 
   const scenarioResults = useMemo(
-    () => SCENARIOS.map((sc) => ({ sc, r: computeImport(applyScenario(state, sc)) })),
-    [state]
+    () => getScenarios().map((sc) => ({ sc, r: computeImport(applyScenario(state, sc)) })),
+    [state, themeName]
   );
 
   const custoBase = scenarioResults.find((s) => s.sc.key === scenarioSelected)?.r.custoUnitario ?? result.custoUnitario;
@@ -993,7 +1039,7 @@ export default function ImportCalculator() {
             </div>
           </div>
           <div className="flex gap-2 flex-wrap items-stretch">
-            <div className="rounded-sm border-2 px-4 py-3 flex-1 min-w-[170px]" style={{ borderColor: RUST, background: "#241C16" }}>
+            <div className="rounded-sm border-2 px-4 py-3 flex-1 min-w-[170px]" style={{ borderColor: RUST, background: RUST_TINT_BG }}>
               <div className="text-[10px] uppercase tracking-widest flex items-center gap-1" style={{ color: MUTED }}><DollarSign size={12} /> Dólar hoje (USD → BRL)</div>
               <div className="flex items-center gap-1">
                 <span className="text-xl font-mono font-bold" style={{ color: RUST }}>R$</span>
@@ -1016,12 +1062,21 @@ export default function ImportCalculator() {
             >
               Exportar resumo
             </button>
+            <button
+              onClick={() => setThemeName((t) => (t === "light" ? "dark" : "light"))}
+              className="flex items-center gap-1 text-xs font-bold uppercase px-3 rounded-sm border self-stretch"
+              style={{ borderColor: NAVY, color: NAVY }}
+              title={themeName === "light" ? "Mudar para modo escuro" : "Mudar para modo claro"}
+            >
+              {themeName === "light" ? <Moon size={14} /> : <Sun size={14} />}
+              {themeName === "light" ? "Escuro" : "Claro"}
+            </button>
           </div>
         </div>
       </div>
 
       {/* Disclaimer banner */}
-      <div className="flex items-start gap-2 px-4 py-2 text-xs" style={{ background: "#2A1D14", color: "#F5C9A0" }}>
+      <div className="flex items-start gap-2 px-4 py-2 text-xs" style={{ background: WARNING_BG, color: WARNING_TEXT }}>
         <AlertTriangle size={16} className="shrink-0 mt-0.5" />
         <span>
           O NCM é buscado automaticamente na <b>Tabela NCM vigente em 25/08/2026</b> que você enviou, e a alíquota de ICMS é preenchida
@@ -1365,7 +1420,7 @@ export default function ImportCalculator() {
                         <tr
                           key={p.id}
                           className="border-b"
-                          style={{ borderColor: LINE, background: editingProductId === p.id ? "#1E2A18" : "transparent" }}
+                          style={{ borderColor: LINE, background: editingProductId === p.id ? HIGHLIGHT_BG : "transparent" }}
                         >
                           <td className="py-1.5 pr-3 font-sans">{p.state.produto}</td>
                           <td className="py-1.5 pr-3 font-sans">{p.state.fabricante}</td>
@@ -1618,7 +1673,7 @@ export default function ImportCalculator() {
                 </thead>
                 <tbody className="font-mono">
                   {supplierResults.map((f) => (
-                    <tr key={f.id} className="border-b" style={{ borderColor: LINE, background: f.isBest ? "#1E2A18" : "transparent" }}>
+                    <tr key={f.id} className="border-b" style={{ borderColor: LINE, background: f.isBest ? HIGHLIGHT_BG : "transparent" }}>
                       <td className="py-1.5 pr-3 font-sans">
                         <input value={f.nome} onChange={(e) => updateSupplier(f.id, "nome", e.target.value)} className="w-full bg-transparent outline-none font-sans" />
                       </td>
@@ -1670,7 +1725,7 @@ export default function ImportCalculator() {
                 </thead>
                 <tbody className="font-mono">
                   {routeResults.map((rt) => (
-                    <tr key={rt.id} className="border-b" style={{ borderColor: LINE, background: rt.isBest ? "#1E2A18" : "transparent" }}>
+                    <tr key={rt.id} className="border-b" style={{ borderColor: LINE, background: rt.isBest ? HIGHLIGHT_BG : "transparent" }}>
                       <td className="py-1.5 pr-3 font-sans">
                         <input value={rt.nome} onChange={(e) => updateRoute(rt.id, "nome", e.target.value)} className="w-full bg-transparent outline-none font-sans" />
                       </td>
