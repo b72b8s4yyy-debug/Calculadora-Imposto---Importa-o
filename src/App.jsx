@@ -497,6 +497,23 @@ export default function ImportCalculator() {
     setProductMessage(null);
   };
 
+  const handleLimparCampos = () => {
+    if (!window.confirm("Limpar todos os campos, mantendo NCM, II e IPI já preenchidos?")) return;
+    setState((s) => ({
+      ...DEFAULT_STATE,
+      ncm: s.ncm,
+      ncmHeading: s.ncmHeading,
+      ncmDesc: s.ncmDesc,
+      ncmObs: s.ncmObs,
+      aliquotaII: s.aliquotaII,
+      aliquotaIPI: s.aliquotaIPI,
+      fonteII: s.fonteII,
+      fonteIPI: s.fonteIPI,
+    }));
+    setEditingProductId(null);
+    setProductMessage(null);
+  };
+
   const handleSelectProduct = (id) => {
     if (!id) {
       handleNovoProduto();
@@ -723,6 +740,14 @@ export default function ImportCalculator() {
                   Editando: <b style={{ color: INK }}>{state.produto || "(sem nome)"}</b>
                 </span>
               )}
+              <button
+                onClick={handleLimparCampos}
+                className="flex items-center gap-1 text-xs font-bold uppercase px-3 py-1.5 rounded-sm border ml-auto"
+                style={{ borderColor: MUTED, color: MUTED }}
+                title="Limpa todos os campos do formulário, mantendo NCM, II e IPI já preenchidos"
+              >
+                <Trash2 size={14} /> Limpar campos
+              </button>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
