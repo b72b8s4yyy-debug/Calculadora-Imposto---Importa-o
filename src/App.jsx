@@ -21,7 +21,7 @@ import lorLogoLight from "./assets/lor-imports-logo-light.png";
 const DARK_PALETTE = {
   INK: "#F2F0E9", PAPER: "#121316", PANEL: "#1C1E24", NAVY: "#FFFFFF",
   RUST: "#E2794F", OLIVE: "#9CB56A", LINE: "#33353D", MUTED: "#9C9587",
-  SURFACE_HOVER: "#242630", FIELD_BORDER: "#5B5F6C",
+  SURFACE_HOVER: "#242630", FIELD_BORDER: "#9BA0B0",
   READONLY_BG: "#1A1B20", RUST_TINT_BG: "#241C16",
   WARNING_BG: "#2A1D14", WARNING_TEXT: "#F5C9A0", HIGHLIGHT_BG: "#1E2A18",
 };
@@ -29,7 +29,7 @@ const DARK_PALETTE = {
 const LIGHT_PALETTE = {
   INK: "#20241F", PAPER: "#F5F1E6", PANEL: "#FFFFFF", NAVY: "#0E2A3D",
   RUST: "#B5502E", OLIVE: "#5B6B3F", LINE: "#D9D2BE", MUTED: "#6B6355",
-  SURFACE_HOVER: "#F2ECDA", FIELD_BORDER: "#B8AD90",
+  SURFACE_HOVER: "#F2ECDA", FIELD_BORDER: "#7A6B47",
   READONLY_BG: "#EFEAD9", RUST_TINT_BG: "#FBF3E9",
   WARNING_BG: "#F3E4D8", WARNING_TEXT: "#5C2E13", HIGHLIGHT_BG: "#EAF0E4",
 };
@@ -1110,8 +1110,9 @@ export default function ImportCalculator() {
             className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide rounded-t-sm border-2"
             style={{
               borderColor: tab === t ? RUST : "transparent",
-              background: tab === t ? PANEL : "transparent",
-              color: tab === t ? INK : MUTED,
+              background: tab === t ? RUST : "transparent",
+              color: tab === t ? "#FFFFFF" : MUTED,
+              boxShadow: tab === t ? "0 2px 6px rgba(0,0,0,0.35)" : "none",
             }}
           >
             {t}
