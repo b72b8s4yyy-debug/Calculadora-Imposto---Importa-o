@@ -975,7 +975,8 @@ export default function ImportCalculator() {
   const ufAtual = ICMS_STATES.find((x) => x.uf === state.estadoDestino);
 
   return (
-    <div className="w-full min-h-full" style={{ background: PAPER, color: INK, fontFamily: "'Space Grotesk', sans-serif" }}>
+    <>
+    <div className="w-full min-h-full print:hidden" style={{ background: PAPER, color: INK, fontFamily: "'Space Grotesk', sans-serif" }}>
       <style>{`.font-mono{font-family:'IBM Plex Mono',monospace;}`}</style>
 
       {/* Header / manifest stamp */}
@@ -1006,6 +1007,14 @@ export default function ImportCalculator() {
             </div>
             <StampBadge label="NCM selecionado" value={state.ncm} color={NAVY} />
             <StampBadge label="Custo unitário Brasil" value={fmtBRL(result.custoUnitario)} color={OLIVE} sub={`lote ${fmtBRL(result.custoTotal)}`} />
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1 text-xs font-bold uppercase px-3 rounded-sm border self-stretch"
+              style={{ borderColor: NAVY, color: NAVY }}
+              title="Gera um resumo formatado para impressão/PDF (Ctrl/Cmd+P)"
+            >
+              Exportar resumo
+            </button>
           </div>
         </div>
       </div>
@@ -1846,5 +1855,79 @@ export default function ImportCalculator() {
         e devem ser confirmados na Receita Federal / Siscomex antes de qualquer operação real.
       </div>
     </div>
+
+    {/* Relatório para impressão/PDF — invisível na tela, só aparece em @media print (Exportar resumo / Ctrl+P) */}
+    <div className="hidden print:block p-8 text-black bg-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+      <h1 className="text-xl font-bold mb-1">Proposta de Importação — {state.produto || "(sem nome)"}</h1>
+      <p className="text-xs text-gray-600 mb-4">
+        {state.aplicacao} {state.fabricante ? `· Fabricante: ${state.fabricante}` : ""} · Gerado em {new Date().toLocaleString("pt-BR")}
+      </p>
+
+      <h2 className="text-sm font-bold uppercase tracking-widest border-b border-gray-400 mt-4 mb-2 pb-1">Dados do produto</h2>
+      <div className="grid grid-cols-2 gap-x-6 text-sm mb-2">
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>NCM</span><span className="font-mono">{state.ncm}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>País de origem</span><span>{state.paisOrigem || "—"}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Quantidade</span><span className="font-mono">{fmtNum(state.quantidade, 0)} un.</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Preço unitário</span><span className="font-mono">{fmtUSD(state.precoUnitario)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Incoterm</span><span>{state.incoterm}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Cotação do dólar</span><span className="font-mono">{fmtBRL(state.cotacao)}</span></div>
+      </div>
+
+      <h2 className="text-sm font-bold uppercase tracking-widest border-b border-gray-400 mt-4 mb-2 pb-1">Formação do custo</h2>
+      <div className="text-sm mb-2">
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Valor Aduaneiro</span><span className="font-mono">{fmtBRL(result.valorAduaneiro)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>Imposto de Importação (II)</span><span className="font-mono">{fmtBRL(result.II)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>IPI</span><span className="font-mono">{fmtBRL(result.IPI)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>PIS-Importação</span><span className="font-mono">{fmtBRL(result.PIS)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>COFINS-Importação</span><span className="font-mono">{fmtBRL(result.COFINS)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>AFRMM</span><span className="font-mono">{fmtBRL(result.AFRMM)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>Taxa Siscomex</span><span className="font-mono">{fmtBRL(result.taxaSiscomex)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>ICMS {state.estadoDestino}</span><span className="font-mono">{fmtBRL(result.ICMS)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>Despesas aduaneiras e logísticas</span><span className="font-mono">{fmtBRL(result.despesasAduaneiras + result.despesasLogisticas)}</span></div>
+        {state.incluirCustoEstoque && (
+          <div className="flex justify-between border-b border-gray-200 py-1 pl-4"><span>Custo de estoque parado</span><span className="font-mono">{fmtBRL(result.custoEstoqueParado)}</span></div>
+        )}
+        <div className="flex justify-between border-b-2 border-gray-500 py-1 font-bold"><span>= Custo Total da Importação</span><span className="font-mono">{fmtBRL(result.custoTotal)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 font-bold"><span>Custo Unitário posto no Brasil</span><span className="font-mono">{fmtBRL(result.custoUnitario)}</span></div>
+      </div>
+
+      <h2 className="text-sm font-bold uppercase tracking-widest border-b border-gray-400 mt-4 mb-2 pb-1">Comparação de fornecedores</h2>
+      <table className="w-full text-sm border-collapse mb-2">
+        <thead>
+          <tr className="text-left border-b-2 border-gray-500">
+            <th className="py-1 pr-3">Fornecedor</th>
+            <th className="py-1 pr-3 text-right">Preço unit. (US$)</th>
+            <th className="py-1 pr-3 text-right">Custo total lote (BRL)</th>
+            <th className="py-1 pr-3 text-right">Custo unitário Brasil (BRL)</th>
+          </tr>
+        </thead>
+        <tbody className="font-mono">
+          {supplierResults.map((f) => (
+            <tr key={f.id} className="border-b border-gray-200">
+              <td className="py-1 pr-3 font-sans">{f.nome}{f.isBest ? " ★" : ""}</td>
+              <td className="py-1 pr-3 text-right">{fmtUSD(f.precoUnitario)}</td>
+              <td className="py-1 pr-3 text-right">{fmtBRL(f.custoTotal)}</td>
+              <td className="py-1 pr-3 text-right font-bold">{fmtBRL(f.custoUnitario)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2 className="text-sm font-bold uppercase tracking-widest border-b border-gray-400 mt-4 mb-2 pb-1">Preço e margem</h2>
+      <div className="text-sm">
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Preço de venda desejado</span><span className="font-mono">{fmtBRL(state.precoVendaDesejado)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Lucro bruto por unidade</span><span className="font-mono">{fmtBRL(lucroUnitario)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Lucro bruto do lote</span><span className="font-mono">{fmtBRL(lucroTotal)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Margem % sobre preço de venda</span><span className="font-mono">{fmtPct(margemAtual)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1"><span>Markup % sobre custo</span><span className="font-mono">{fmtPct(markupAtual)}</span></div>
+        <div className="flex justify-between border-b border-gray-200 py-1 font-bold"><span>Lucro líquido real por unidade (após tributos de saída)</span><span className="font-mono">{fmtBRL(saida.lucroLiquidoRealUnitario)}</span></div>
+      </div>
+
+      <p className="text-[10px] text-gray-500 mt-6">
+        Ferramenta de simulação para avaliação comercial preliminar — confirme NCM, alíquotas e valores na Receita Federal/Siscomex e com seu
+        contador antes de qualquer operação real.
+      </p>
+    </div>
+    </>
   );
 }
