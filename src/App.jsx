@@ -30,12 +30,16 @@ const CHART_TOOLTIP_STYLE = {
 // ---------------------------------------------------------------------------
 // Currency / number helpers
 // ---------------------------------------------------------------------------
+const toNum = (v) => {
+  const n = Number(v);
+  return isFinite(n) ? n : 0;
+};
 const fmtBRL = (v) =>
-  (isFinite(v) ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 });
+  toNum(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 });
 const fmtUSD = (v) =>
-  (isFinite(v) ? v : 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-const fmtPct = (v, d = 1) => `${(isFinite(v) ? v * 100 : 0).toFixed(d)}%`;
-const fmtNum = (v, d = 2) => (isFinite(v) ? v : 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  toNum(v).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+const fmtPct = (v, d = 1) => `${(toNum(v) * 100).toFixed(d)}%`;
+const fmtNum = (v, d = 2) => toNum(v).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const stripAccents = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 // ---------------------------------------------------------------------------
@@ -114,8 +118,8 @@ function computeImport(p, { qty, precoUnitario, baseQuantidade } = {}) {
   const AFRMM = p.modal === "maritimo" ? freteIntlBRL * p.afrmmAliquota : 0;
   const taxaSiscomex = p.taxaSiscomex;
 
-  const despesasAduaneiras = p.despachante + p.armazenagem + p.despesasPortuarias + p.outrasDespesas;
-  const despesasLogisticas = p.transportePortoEstoque + p.agenteCarga;
+  const despesasAduaneiras = toNum(p.despachante) + toNum(p.armazenagem) + toNum(p.despesasPortuarias) + toNum(p.outrasDespesas);
+  const despesasLogisticas = toNum(p.transportePortoEstoque) + toNum(p.agenteCarga);
 
   const somaAntesICMS = valorAduaneiro + II + IPI + PIS + COFINS + AFRMM + taxaSiscomex + despesasAduaneiras;
   const denom = 1 - p.aliquotaICMS;
@@ -139,6 +143,43 @@ function computeImport(p, { qty, precoUnitario, baseQuantidade } = {}) {
     despesasAduaneiras, despesasLogisticas, ICMS, baseICMS,
     custoTotal, custoUnitario, creditos, custoLiquido, custoUnitarioLiquido,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Fluxo de caixa — reaproveita o `result` de computeImport(), não recalcula
+// nenhum valor de custo; só organiza as saídas/entradas de caixa no tempo
+// (cronograma de pagamento) para achar o capital de giro máximo necessário.
+// ---------------------------------------------------------------------------
+function computeCashFlow(p, result) {
+  const valorProdutoBRL = result.valorProdutoOrigem * toNum(p.cotacao);
+  const sinalValor = valorProdutoBRL * toNum(p.sinalPercentual);
+  const saldoValor = valorProdutoBRL - sinalValor;
+  const freteSeguroBRL = (result.freteIntlOrigem + result.seguroOrigem) * toNum(p.cotacao);
+  const impostosBRL = result.II + result.IPI + result.PIS + result.COFINS + result.AFRMM + toNum(result.taxaSiscomex) + result.ICMS;
+  const despesasBRL = result.despesasAduaneiras + result.despesasLogisticas;
+  const receitaBRL = toNum(p.precoVendaDesejado) * toNum(p.quantidade);
+  const diaVenda = toNum(p.prazoDesembaracoDias) + toNum(p.prazoVendaDias);
+
+  const brutos = [
+    { dia: toNum(p.sinalPrazoDias), label: "Sinal ao fornecedor", valor: -sinalValor },
+    { dia: toNum(p.saldoPrazoDias), label: "Saldo ao fornecedor", valor: -saldoValor },
+    { dia: toNum(p.freteIntlPrazoDias), label: "Frete e seguro internacional", valor: -freteSeguroBRL },
+    { dia: toNum(p.prazoDesembaracoDias), label: "Impostos e taxas (desembaraço)", valor: -impostosBRL },
+    { dia: toNum(p.despesasLogisticaPrazoDias), label: "Despesas de logística nacional", valor: -despesasBRL },
+    { dia: diaVenda, label: "Recebimento da venda", valor: receitaBRL },
+  ].sort((a, b) => a.dia - b.dia);
+
+  const eventos = brutos[0]?.dia > 0 ? [{ dia: 0, label: "Pedido", valor: 0 }, ...brutos] : brutos;
+
+  let acumulado = 0;
+  const curva = eventos.map((e) => {
+    acumulado += e.valor;
+    return { ...e, acumulado };
+  });
+
+  const capitalGiroMax = curva.length ? Math.min(0, ...curva.map((c) => c.acumulado)) : 0;
+
+  return { curva, capitalGiroMax, diasCicloTotal: diaVenda };
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +232,14 @@ const DEFAULT_STATE = {
   fonteSiscomex: "Taxa de Utilização do Siscomex por Declaração de Importação (Receita Federal) — valor de referência atual R$ 154,23 por DI; adições extras têm taxa adicional.",
   precoVendaDesejado: 1200,
   precoMaximoMercado: 1500,
+  // Cronograma de pagamento — dias contados a partir do pedido (dia 0)
+  sinalPercentual: 0.3,
+  sinalPrazoDias: 0,
+  saldoPrazoDias: 30,
+  freteIntlPrazoDias: 35,
+  prazoDesembaracoDias: 60,
+  despesasLogisticaPrazoDias: 60,
+  prazoVendaDias: 30,
 };
 
 const DEFAULT_SUPPLIERS = [
@@ -371,7 +420,7 @@ function NCMCombo({ value, headingLabel, descLabel, onSelect }) {
   );
 }
 
-const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Cenários"];
+const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Cenários", "Fluxo de Caixa"];
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -523,6 +572,13 @@ export default function ImportCalculator() {
       outrasDespesas: "",
       precoVendaDesejado: "",
       precoMaximoMercado: "",
+      sinalPercentual: "",
+      sinalPrazoDias: "",
+      saldoPrazoDias: "",
+      freteIntlPrazoDias: "",
+      prazoDesembaracoDias: "",
+      despesasLogisticaPrazoDias: "",
+      prazoVendaDias: "",
       // Impostos e classificação fiscal — preservados
       ncm: s.ncm,
       ncmHeading: s.ncmHeading,
@@ -618,6 +674,7 @@ export default function ImportCalculator() {
   };
 
   const result = useMemo(() => computeImport(state), [state]);
+  const cashFlow = useMemo(() => computeCashFlow(state, result), [state, result]);
 
   const volumeSim = useMemo(
     () => VOLUMES.map((v) => ({ qty: v, ...computeImport(state, { qty: v, baseQuantidade: state.quantidade }) })),
@@ -878,6 +935,19 @@ export default function ImportCalculator() {
               <Section title="Preço de venda" icon={<Info size={14} color={NAVY} />}>
                 <Field label="Preço de venda desejado" value={state.precoVendaDesejado} onChange={set("precoVendaDesejado")} suffix="BRL" />
                 <Field label="Preço máximo no mercado BR" value={state.precoMaximoMercado} onChange={set("precoMaximoMercado")} suffix="BRL" />
+              </Section>
+
+              <Section title="Cronograma de pagamento (para fluxo de caixa)" icon={<DollarSign size={14} color={NAVY} />}>
+                <Field label="Sinal ao fornecedor" value={state.sinalPercentual} onChange={set("sinalPercentual")} step="0.01" suffix="fração do valor do produto" />
+                <Field label="Prazo do sinal" value={state.sinalPrazoDias} onChange={set("sinalPrazoDias")} suffix="dias após o pedido" />
+                <Field label="Prazo do saldo ao fornecedor" value={state.saldoPrazoDias} onChange={set("saldoPrazoDias")} suffix="dias após o pedido" />
+                <Field label="Prazo do frete internacional" value={state.freteIntlPrazoDias} onChange={set("freteIntlPrazoDias")} suffix="dias após o pedido" />
+                <Field label="Prazo do desembaraço (impostos)" value={state.prazoDesembaracoDias} onChange={set("prazoDesembaracoDias")} suffix="dias após o pedido" />
+                <Field label="Prazo das despesas de logística nacional" value={state.despesasLogisticaPrazoDias} onChange={set("despesasLogisticaPrazoDias")} suffix="dias após o pedido" />
+                <Field label="Prazo de venda" value={state.prazoVendaDias} onChange={set("prazoVendaDias")} suffix="dias após o desembaraço, até receber a venda" full />
+                <span className="text-[11px] italic col-span-2" style={{ color: MUTED }}>
+                  Usado na aba Fluxo de Caixa para estimar o capital de giro máximo necessário durante o ciclo de importação e venda.
+                </span>
               </Section>
             </div>
             </div>
@@ -1202,6 +1272,56 @@ export default function ImportCalculator() {
             </div>
             <p className="text-xs mt-3" style={{ color: MUTED }}>
               Selecione um cenário para comparar com a margem calculada na aba Preço &amp; Margem (base atual: {fmtBRL(custoBase)}/unidade).
+            </p>
+          </div>
+        )}
+
+        {tab === "Fluxo de Caixa" && (
+          <div>
+            <div className="grid sm:grid-cols-2 gap-3 mb-4">
+              <StampBadge
+                label="Capital de giro máximo necessário"
+                value={fmtBRL(Math.abs(cashFlow.capitalGiroMax))}
+                color={RUST}
+                sub="ponto mais negativo do caixa acumulado — o quanto você precisa ter disponível"
+              />
+              <StampBadge
+                label="Dias de ciclo total"
+                value={`${fmtNum(cashFlow.diasCicloTotal, 0)} dias`}
+                color={NAVY}
+                sub="do pedido ao fornecedor até o recebimento da venda"
+              />
+            </div>
+            <div style={{ width: "100%", height: 260 }}>
+              <ResponsiveContainer>
+                <LineChart data={cashFlow.curva.map((e) => ({ dia: e.dia, acumulado: e.acumulado, label: e.label }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
+                  <XAxis dataKey="dia" tick={{ fontSize: 12, fill: MUTED }} label={{ value: "Dias desde o pedido", position: "insideBottom", offset: -4, fontSize: 12, fill: MUTED }} />
+                  <YAxis tick={{ fontSize: 12, fill: MUTED }} tickFormatter={(v) => `R$${Math.round(v)}`} />
+                  <Tooltip
+                    formatter={(v) => fmtBRL(v)}
+                    labelFormatter={(l, payload) => `Dia ${l}${payload?.[0]?.payload?.label ? ` — ${payload[0].payload.label}` : ""}`}
+                    {...CHART_TOOLTIP_STYLE}
+                  />
+                  <ReferenceLine y={0} stroke={MUTED} />
+                  <Line type="stepAfter" dataKey="acumulado" stroke={RUST} strokeWidth={2} dot={{ r: 3 }} name="Caixa acumulado" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 rounded-sm border p-3" style={{ borderColor: LINE }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>Eventos do cronograma</h3>
+              {cashFlow.curva.map((e, i) => (
+                <Row
+                  key={i}
+                  label={`Dia ${e.dia} — ${e.label}`}
+                  value={`${e.valor >= 0 ? "+" : ""}${fmtBRL(e.valor)}  ·  acum. ${fmtBRL(e.acumulado)}`}
+                  accent={e.acumulado < 0}
+                />
+              ))}
+            </div>
+            <p className="text-xs mt-3" style={{ color: MUTED }}>
+              Ajuste os prazos na aba Dados → Cronograma de pagamento. O capital de giro máximo é quanto você precisa ter em caixa (ou em uma linha
+              de crédito) para sustentar a importação até a venda ser recebida.
             </p>
           </div>
         )}
