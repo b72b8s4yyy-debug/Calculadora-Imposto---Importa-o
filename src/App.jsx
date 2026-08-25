@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { Ship, AlertTriangle, Anchor, Package, Plus, Trash2, Info, Search, DollarSign, CheckCircle2 } from "lucide-react";
 import { getClientId, loadAppState, saveAppState } from "./lib/supabase";
+import lorLogo from "./assets/lor-imports-logo.png";
 
 // ---------------------------------------------------------------------------
 // Design tokens
@@ -615,10 +616,11 @@ export default function ImportCalculator() {
       <div className="border-b-4 px-4 py-4" style={{ borderColor: NAVY, background: PANEL }}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Anchor size={28} color={NAVY} />
+            <h1 className="m-0 shrink-0">
+              <img src={lorLogo} alt="LOR Imports" className="h-11 w-auto" />
+            </h1>
             <div>
               <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: MUTED }}>Calculadora de Custo de Importação · China → Brasil</div>
-              <h1 className="text-lg font-bold" style={{ color: NAVY }}>{state.produto}</h1>
               <div className="text-xs" style={{ color: MUTED }}>{state.aplicacao}</div>
             </div>
           </div>
