@@ -183,6 +183,46 @@ function computeCashFlow(p, result) {
 }
 
 // ---------------------------------------------------------------------------
+// Tributos na saída (venda) — reaproveita result.custoUnitario de
+// computeImport(); calcula apenas o lado da venda (ICMS de saída, DIFAL
+// quando o comprador está em outro estado, ou DAS estimado no Simples
+// Nacional) para chegar no lucro líquido real, além do lucro bruto já
+// existente.
+// ---------------------------------------------------------------------------
+function computeSaida(p, result) {
+  const precoVenda = toNum(p.precoVendaDesejado);
+  const ufComprador = p.estadoDestinoComprador || p.estadoDestino;
+  const estComprador = ICMS_STATES.find((s) => s.uf === ufComprador);
+  const aliquotaCompradorInterna = estComprador ? estComprador.aliquota : toNum(p.aliquotaICMS);
+  const mesmoEstado = ufComprador === p.estadoDestino;
+  const simplesNacional = p.regimeTributario === "Simples Nacional";
+
+  let icmsSaida = 0;
+  let difal = 0;
+  let das = 0;
+
+  if (simplesNacional) {
+    das = precoVenda * toNum(p.dasAliquota);
+  } else if (mesmoEstado) {
+    icmsSaida = precoVenda * toNum(p.aliquotaICMS);
+  } else {
+    const aliqInter = toNum(p.aliquotaICMSInterestadual);
+    icmsSaida = precoVenda * aliqInter;
+    difal = Math.max(0, aliquotaCompradorInterna - aliqInter) * precoVenda;
+  }
+
+  const tributosSaida = das + icmsSaida + difal;
+  const lucroBrutoUnitario = precoVenda - result.custoUnitario;
+  const lucroLiquidoRealUnitario = lucroBrutoUnitario - tributosSaida;
+
+  return {
+    ufComprador, mesmoEstado, simplesNacional, aliquotaCompradorInterna,
+    icmsSaida, difal, das, tributosSaida,
+    lucroBrutoUnitario, lucroLiquidoRealUnitario,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Default state — produto-piloto: intercooler EA888 Gen 3
 // ---------------------------------------------------------------------------
 const DEFAULT_STATE = {
@@ -241,6 +281,12 @@ const DEFAULT_STATE = {
   prazoDesembaracoDias: 60,
   despesasLogisticaPrazoDias: 60,
   prazoVendaDias: 30,
+  // Tributos na saída (venda) — DIFAL/DAS
+  estadoDestinoComprador: "SP",
+  aliquotaICMSInterestadual: 0.04,
+  fonteICMSInterestadual: "Resolução do Senado Federal nº 13/2012 — alíquota interestadual de 4% para bens/mercadorias importados sem similar nacional relevante (conteúdo de importação acima de 40%). Confirme se o seu produto se enquadra antes de aplicar.",
+  dasAliquota: 0.06,
+  fonteDAS: "Estimativa simplificada — a alíquota efetiva do Simples Nacional varia por Anexo, faixa de receita bruta acumulada (RBT12) e atividade (revenda de mercadorias normalmente no Anexo I). Consulte a tabela vigente do seu Anexo/faixa antes de usar para precificação real.",
 };
 
 const DEFAULT_SUPPLIERS = [
@@ -629,6 +675,11 @@ export default function ImportCalculator() {
       creditoPIS: s.creditoPIS,
       creditoCOFINS: s.creditoCOFINS,
       creditoIPI: s.creditoIPI,
+      estadoDestinoComprador: s.estadoDestinoComprador,
+      aliquotaICMSInterestadual: s.aliquotaICMSInterestadual,
+      fonteICMSInterestadual: s.fonteICMSInterestadual,
+      dasAliquota: s.dasAliquota,
+      fonteDAS: s.fonteDAS,
     }));
     setEditingProductId(null);
     setProductMessage(null);
@@ -700,6 +751,7 @@ export default function ImportCalculator() {
 
   const result = useMemo(() => computeImport(state), [state]);
   const cashFlow = useMemo(() => computeCashFlow(state, result), [state, result]);
+  const saida = useMemo(() => computeSaida(state, result), [state, result]);
 
   const volumeSim = useMemo(
     () => VOLUMES.map((v) => ({ qty: v, ...computeImport(state, { qty: v, baseQuantidade: state.quantidade }) })),
@@ -1265,6 +1317,49 @@ export default function ImportCalculator() {
                 <Row label="Markup % (sobre custo)" value={fmtPct(markupAtual)} />
                 <Row label="Ponto de equilíbrio (unidades no lote)" value={isFinite(pontoEquilibrio) ? fmtNum(pontoEquilibrio, 1) : "—"} />
                 <Row label="Margem no preço máximo de mercado" value={fmtPct(margemMaxMercado)} accent />
+              </div>
+
+              <Section title="Tributos na saída (venda) — DIFAL / DAS" icon={<AlertTriangle size={14} color={RUST} />}>
+                <Field
+                  label="Estado do comprador"
+                  value={state.estadoDestinoComprador}
+                  onChange={set("estadoDestinoComprador")}
+                  options={ICMS_STATES.map((s) => ({ value: s.uf, label: `${s.uf} — ${s.nome}` }))}
+                />
+                {saida.simplesNacional ? (
+                  <>
+                    <Field label="Alíquota DAS (Simples Nacional)" value={state.dasAliquota} onChange={set("dasAliquota")} step="0.001" suffix="fração da receita de venda" />
+                    <span className="text-[11px] col-span-2 italic" style={{ color: MUTED }}>{state.fonteDAS}</span>
+                  </>
+                ) : (
+                  <>
+                    {!saida.mesmoEstado && (
+                      <Field label="Alíquota ICMS interestadual" value={state.aliquotaICMSInterestadual} onChange={set("aliquotaICMSInterestadual")} step="0.001" suffix="fração" />
+                    )}
+                    <span className="text-[11px] col-span-2 italic" style={{ color: MUTED }}>
+                      {saida.mesmoEstado
+                        ? "Comprador no mesmo estado do estoque — aplica a alíquota interna de ICMS (Estado de destino, aba Formação) sobre a venda, sem DIFAL."
+                        : state.fonteICMSInterestadual}
+                    </span>
+                  </>
+                )}
+                <span className="text-[11px] col-span-2" style={{ color: MUTED }}>
+                  Estimativa simplificada de tributos na venda. Não considera substituição tributária, partilha do DIFAL entre origem/destino (Convênio
+                  ICMS 93/2015) nem particularidades do seu Anexo do Simples. Confirme com seu contador antes de precificar.
+                </span>
+              </Section>
+              <div className="rounded-sm border p-3" style={{ borderColor: LINE }}>
+                <Row label="Lucro bruto por unidade" value={fmtBRL(saida.lucroBrutoUnitario)} />
+                {saida.simplesNacional ? (
+                  <Row label="DAS estimado (sobre a venda)" value={fmtBRL(saida.das)} indent accent />
+                ) : (
+                  <>
+                    <Row label={saida.mesmoEstado ? "ICMS de saída (interno)" : "ICMS de saída (interestadual)"} value={fmtBRL(saida.icmsSaida)} indent accent />
+                    {!saida.mesmoEstado && <Row label={`DIFAL (${saida.ufComprador} vs. destino da importação)`} value={fmtBRL(saida.difal)} indent accent />}
+                  </>
+                )}
+                <Row label="= Lucro líquido real por unidade" value={fmtBRL(saida.lucroLiquidoRealUnitario)} bold accent={saida.lucroLiquidoRealUnitario < 0} />
+                <Row label="Lucro líquido real do lote" value={fmtBRL(saida.lucroLiquidoRealUnitario * toNum(state.quantidade))} bold accent={saida.lucroLiquidoRealUnitario < 0} />
               </div>
             </div>
             <div>
