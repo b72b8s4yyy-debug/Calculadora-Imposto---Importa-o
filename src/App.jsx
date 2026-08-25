@@ -1064,12 +1064,16 @@ export default function ImportCalculator() {
             </button>
             <button
               onClick={() => setThemeName((t) => (t === "light" ? "dark" : "light"))}
-              className="flex items-center gap-1 text-xs font-bold uppercase px-3 rounded-sm border self-stretch"
-              style={{ borderColor: NAVY, color: NAVY }}
+              className="relative shrink-0 self-center rounded-full transition-colors"
+              style={{ width: 44, height: 24, background: themeName === "light" ? LINE : RUST }}
               title={themeName === "light" ? "Mudar para modo escuro" : "Mudar para modo claro"}
             >
-              {themeName === "light" ? <Moon size={14} /> : <Sun size={14} />}
-              {themeName === "light" ? "Escuro" : "Claro"}
+              <span
+                className="absolute rounded-full flex items-center justify-center shadow transition-all"
+                style={{ width: 18, height: 18, top: 3, left: themeName === "light" ? 3 : 23, background: "#FFFFFF" }}
+              >
+                {themeName === "light" ? <Sun size={11} color={LIGHT_PALETTE.RUST} /> : <Moon size={11} color={DARK_PALETTE.PAPER} />}
+              </span>
             </button>
           </div>
         </div>
