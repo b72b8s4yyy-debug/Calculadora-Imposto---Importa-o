@@ -617,7 +617,7 @@ export default function ImportCalculator() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <h1 className="m-0 shrink-0">
-              <img src={lorLogo} alt="LOR Imports" className="h-11 w-auto" />
+              <img src={lorLogo} alt="LOR Imports" className="h-20 w-auto" />
             </h1>
             <div>
               <div className="text-[10px] tracking-[0.3em] uppercase" style={{ color: MUTED }}>Calculadora de Custo de Importação · China → Brasil</div>
