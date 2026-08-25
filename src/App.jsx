@@ -362,6 +362,12 @@ export default function ImportCalculator() {
   const [scenarioSelected, setScenarioSelected] = useState("base");
   const [syncStatus, setSyncStatus] = useState("loading"); // loading | synced | saving | offline
 
+  // Cadastro de produtos (aba "Dados"): cada item guarda um snapshot completo
+  // de `state` para reproduzir exatamente a simulação daquele produto.
+  const [products, setProducts] = useState([]);
+  const [editingProductId, setEditingProductId] = useState(null);
+  const [productMessage, setProductMessage] = useState(null); // { type: "success" | "error", text }
+
   const clientIdRef = useRef(null);
   const loadedRef = useRef(false);
 
@@ -377,6 +383,7 @@ export default function ImportCalculator() {
           if (saved.suppliers) setSuppliers(saved.suppliers);
           if (saved.tab) setTab(saved.tab);
           if (saved.scenarioSelected) setScenarioSelected(saved.scenarioSelected);
+          if (saved.products) setProducts(saved.products);
         }
         setSyncStatus("synced");
       })
@@ -397,7 +404,7 @@ export default function ImportCalculator() {
     if (!loadedRef.current) return;
     setSyncStatus("saving");
     const timer = setTimeout(() => {
-      saveAppState(clientIdRef.current, { state, suppliers, tab, scenarioSelected })
+      saveAppState(clientIdRef.current, { state, suppliers, tab, scenarioSelected, products })
         .then(() => setSyncStatus("synced"))
         .catch((err) => {
           console.error("Falha ao salvar dados:", err);
@@ -405,9 +412,97 @@ export default function ImportCalculator() {
         });
     }, 800);
     return () => clearTimeout(timer);
-  }, [state, suppliers, tab, scenarioSelected]);
+  }, [state, suppliers, tab, scenarioSelected, products]);
 
   const set = (key) => (val) => setState((s) => ({ ...s, [key]: val }));
+
+  // ---------------------------------------------------------------------
+  // Cadastro de produtos — usa a mesma `state` e o mesmo `computeImport`
+  // da calculadora, sem duplicar nenhuma lógica de cálculo.
+  // ---------------------------------------------------------------------
+  const REQUIRED_PRODUCT_FIELDS = [
+    { key: "produto", label: "Produto" },
+    { key: "fabricante", label: "Fabricante" },
+    { key: "ncm", label: "NCM" },
+    { key: "quantidade", label: "Quantidade", numeric: true },
+    { key: "precoUnitario", label: "Preço unitário", numeric: true },
+    { key: "cotacao", label: "Cotação do dólar", numeric: true },
+    { key: "estadoDestino", label: "Estado de destino" },
+  ];
+
+  const validateProduct = (s) => {
+    const missing = [];
+    for (const f of REQUIRED_PRODUCT_FIELDS) {
+      const v = s[f.key];
+      if (f.numeric) {
+        if (!(Number(v) > 0)) missing.push(f.label);
+      } else if (!v || String(v).trim() === "") {
+        missing.push(f.label);
+      }
+    }
+    return missing;
+  };
+
+  const handleCadastrarProduto = () => {
+    const missing = validateProduct(state);
+    if (missing.length > 0) {
+      setProductMessage({ type: "error", text: `Preencha os campos obrigatórios: ${missing.join(", ")}.` });
+      return;
+    }
+    const now = new Date().toISOString();
+    if (editingProductId) {
+      setProducts((prev) =>
+        prev.map((p) => (p.id === editingProductId ? { ...p, state: { ...state }, updatedAt: now } : p))
+      );
+      setProductMessage({ type: "success", text: "Produto atualizado com sucesso." });
+    } else {
+      setProducts((prev) => [...prev, { id: crypto.randomUUID(), state: { ...state }, createdAt: now, updatedAt: now }]);
+      setProductMessage({ type: "success", text: "Produto cadastrado com sucesso." });
+    }
+    setEditingProductId(null);
+    setState(DEFAULT_STATE);
+  };
+
+  const handleNovoProduto = () => {
+    setState(DEFAULT_STATE);
+    setEditingProductId(null);
+    setProductMessage(null);
+  };
+
+  const handleSelectProduct = (id) => {
+    if (!id) {
+      handleNovoProduto();
+      return;
+    }
+    const p = products.find((x) => x.id === id);
+    if (!p) return;
+    setState(p.state);
+    setEditingProductId(id);
+    setProductMessage(null);
+  };
+
+  const handleDuplicateProduct = (id) => {
+    const p = products.find((x) => x.id === id);
+    if (!p) return;
+    const now = new Date().toISOString();
+    setProducts((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), state: { ...p.state, produto: `${p.state.produto} (cópia)` }, createdAt: now, updatedAt: now },
+    ]);
+    setProductMessage({ type: "success", text: "Produto duplicado com sucesso." });
+  };
+
+  const handleDeleteProduct = (id) => {
+    const p = products.find((x) => x.id === id);
+    if (!p) return;
+    if (!window.confirm("Tem certeza que deseja excluir este produto?")) return;
+    setProducts((prev) => prev.filter((x) => x.id !== id));
+    if (editingProductId === id) {
+      setEditingProductId(null);
+      setState(DEFAULT_STATE);
+    }
+    setProductMessage({ type: "success", text: "Produto excluído com sucesso." });
+  };
 
   const selectNCM = (item) => {
     setState((s) => ({ ...s, ncm: item.formatted, ncmHeading: item.heading, ncmDesc: item.desc, ncmObs: "Selecionado na Tabela NCM vigente em 25/08/2026 (Res. Gecex nº 926/2026) — confirme alíquotas de II/IPI/PIS/COFINS na TEC/TIPI antes de importar." }));
@@ -559,7 +654,34 @@ export default function ImportCalculator() {
 
       <div className="p-4" style={{ background: PANEL, borderTop: `1px solid ${LINE}` }}>
         {tab === "Dados" && (
-          <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div className="min-w-[260px]">
+                <Field
+                  label="Selecionar produto cadastrado"
+                  value={editingProductId ?? ""}
+                  onChange={handleSelectProduct}
+                  options={[
+                    { value: "", label: products.length ? "— Novo produto —" : "Nenhum produto cadastrado" },
+                    ...products.map((p) => ({ value: p.id, label: p.state.produto || "(sem nome)" })),
+                  ]}
+                />
+              </div>
+              <button
+                onClick={handleNovoProduto}
+                className="flex items-center gap-1 text-xs font-bold uppercase px-3 py-1.5 rounded-sm border"
+                style={{ borderColor: NAVY, color: NAVY }}
+              >
+                <Plus size={14} /> Novo produto
+              </button>
+              {editingProductId && (
+                <span className="text-xs" style={{ color: MUTED }}>
+                  Editando: <b style={{ color: INK }}>{state.produto || "(sem nome)"}</b>
+                </span>
+              )}
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
             <div>
               <Section title="Produto" icon={<Package size={14} color={NAVY} />}>
                 <Field label="Produto" value={state.produto} onChange={set("produto")} type="text" full />
@@ -647,6 +769,75 @@ export default function ImportCalculator() {
                 <Field label="Preço máximo no mercado BR" value={state.precoMaximoMercado} onChange={set("precoMaximoMercado")} suffix="BRL" />
               </Section>
             </div>
+            </div>
+
+            <div
+              className="flex items-center justify-between gap-3 flex-wrap mt-1 mb-4 px-3 py-3 rounded-sm border"
+              style={{ borderColor: LINE, background: PANEL }}
+            >
+              <span className="text-xs" style={{ color: productMessage?.type === "error" ? RUST : OLIVE }}>
+                {productMessage?.text}
+              </span>
+              <button
+                onClick={handleCadastrarProduto}
+                className="flex items-center gap-1 text-xs font-bold uppercase px-4 py-2 rounded-sm border-2"
+                style={{ borderColor: OLIVE, color: "#FFFFFF", background: OLIVE }}
+              >
+                <CheckCircle2 size={14} /> {editingProductId ? "Atualizar produto" : "Cadastrar produto"}
+              </button>
+            </div>
+
+            <Section title="Produtos cadastrados" icon={<Package size={14} color={NAVY} />}>
+              {products.length === 0 ? (
+                <span className="text-xs col-span-2" style={{ color: MUTED }}>
+                  Nenhum produto cadastrado ainda. Preencha o formulário acima e clique em "Cadastrar produto".
+                </span>
+              ) : (
+                <div className="col-span-2 overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="text-left border-b-2" style={{ borderColor: NAVY }}>
+                        <th className="py-2 pr-3">Produto</th>
+                        <th className="py-2 pr-3">Fabricante</th>
+                        <th className="py-2 pr-3">NCM</th>
+                        <th className="py-2 pr-3 text-right">Quantidade</th>
+                        <th className="py-2 pr-3 text-right">Preço unit. (US$)</th>
+                        <th className="py-2 pr-3 text-right">Custo unit. final (BRL)</th>
+                        <th className="py-2 pr-3">Cadastrado em</th>
+                        <th className="py-2 pr-3">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono">
+                      {products.map((p) => {
+                        const r = computeImport(p.state);
+                        return (
+                          <tr
+                            key={p.id}
+                            className="border-b"
+                            style={{ borderColor: LINE, background: editingProductId === p.id ? "#EAF0E4" : "transparent" }}
+                          >
+                            <td className="py-1.5 pr-3 font-sans">{p.state.produto}</td>
+                            <td className="py-1.5 pr-3 font-sans">{p.state.fabricante}</td>
+                            <td className="py-1.5 pr-3">{p.state.ncm}</td>
+                            <td className="py-1.5 pr-3 text-right">{fmtNum(p.state.quantidade, 0)}</td>
+                            <td className="py-1.5 pr-3 text-right">{fmtUSD(p.state.precoUnitario)}</td>
+                            <td className="py-1.5 pr-3 text-right font-bold" style={{ color: OLIVE }}>{fmtBRL(r.custoUnitario)}</td>
+                            <td className="py-1.5 pr-3 font-sans">{new Date(p.createdAt).toLocaleDateString("pt-BR")}</td>
+                            <td className="py-1.5 pr-3 font-sans">
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => handleSelectProduct(p.id)} className="text-xs font-bold uppercase" style={{ color: NAVY }}>Editar</button>
+                                <button onClick={() => handleDuplicateProduct(p.id)} className="text-xs font-bold uppercase" style={{ color: MUTED }}>Duplicar</button>
+                                <button onClick={() => handleDeleteProduct(p.id)} title="Excluir"><Trash2 size={14} color={RUST} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
           </div>
         )}
 
