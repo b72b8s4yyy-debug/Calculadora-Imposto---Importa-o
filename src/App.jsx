@@ -126,7 +126,9 @@ function computeImport(p, { qty, precoUnitario, baseQuantidade } = {}) {
   const baseICMS = denom > 0 ? somaAntesICMS / denom : somaAntesICMS;
   const ICMS = baseICMS * p.aliquotaICMS;
 
-  const custoTotal = valorAduaneiro + II + IPI + PIS + COFINS + AFRMM + taxaSiscomex + ICMS + despesasAduaneiras + despesasLogisticas;
+  const custoAntesEstoque = valorAduaneiro + II + IPI + PIS + COFINS + AFRMM + taxaSiscomex + ICMS + despesasAduaneiras + despesasLogisticas;
+  const custoEstoqueParado = custoAntesEstoque * toNum(p.custoOportunidadeMensal) * (toNum(p.tempoArmazenagemDias) / 30);
+  const custoTotal = p.incluirCustoEstoque ? custoAntesEstoque + custoEstoqueParado : custoAntesEstoque;
   const custoUnitario = q > 0 ? custoTotal / q : 0;
 
   const creditos =
@@ -140,7 +142,7 @@ function computeImport(p, { qty, precoUnitario, baseQuantidade } = {}) {
   return {
     q, preco, valorProdutoOrigem, freteInternoOrigem, freteIntlOrigem, seguroOrigem,
     valorAduaneiro, II, IPI, PIS, COFINS, AFRMM, taxaSiscomex,
-    despesasAduaneiras, despesasLogisticas, ICMS, baseICMS,
+    despesasAduaneiras, despesasLogisticas, custoEstoqueParado, ICMS, baseICMS,
     custoTotal, custoUnitario, creditos, custoLiquido, custoUnitarioLiquido,
   };
 }
@@ -287,6 +289,10 @@ const DEFAULT_STATE = {
   fonteICMSInterestadual: "Resolução do Senado Federal nº 13/2012 — alíquota interestadual de 4% para bens/mercadorias importados sem similar nacional relevante (conteúdo de importação acima de 40%). Confirme se o seu produto se enquadra antes de aplicar.",
   dasAliquota: 0.06,
   fonteDAS: "Estimativa simplificada — a alíquota efetiva do Simples Nacional varia por Anexo, faixa de receita bruta acumulada (RBT12) e atividade (revenda de mercadorias normalmente no Anexo I). Consulte a tabela vigente do seu Anexo/faixa antes de usar para precificação real.",
+  // Custo de estoque parado
+  tempoArmazenagemDias: 30,
+  custoOportunidadeMensal: 0.02,
+  incluirCustoEstoque: false,
 };
 
 const DEFAULT_SUPPLIERS = [
@@ -663,6 +669,8 @@ export default function ImportCalculator() {
       prazoDesembaracoDias: "",
       despesasLogisticaPrazoDias: "",
       prazoVendaDias: "",
+      tempoArmazenagemDias: "",
+      custoOportunidadeMensal: "",
       // Impostos e classificação fiscal — preservados
       ncm: s.ncm,
       ncmHeading: s.ncmHeading,
@@ -693,6 +701,7 @@ export default function ImportCalculator() {
       fonteICMSInterestadual: s.fonteICMSInterestadual,
       dasAliquota: s.dasAliquota,
       fonteDAS: s.fonteDAS,
+      incluirCustoEstoque: s.incluirCustoEstoque,
     }));
     setEditingProductId(null);
     setProductMessage(null);
@@ -1118,6 +1127,20 @@ export default function ImportCalculator() {
                   Usado na aba Fluxo de Caixa para estimar o capital de giro máximo necessário durante o ciclo de importação e venda.
                 </span>
               </Section>
+
+              <Section title="Custo de estoque parado" icon={<DollarSign size={14} color={NAVY} />}>
+                <Field label="Tempo de armazenagem previsto" value={state.tempoArmazenagemDias} onChange={set("tempoArmazenagemDias")} suffix="dias" />
+                <Field label="Custo de oportunidade do capital" value={state.custoOportunidadeMensal} onChange={set("custoOportunidadeMensal")} step="0.001" suffix="fração ao mês" />
+                <label className="flex items-center gap-2 text-sm col-span-2">
+                  <input type="checkbox" checked={state.incluirCustoEstoque} onChange={(e) => set("incluirCustoEstoque")(e.target.checked)} />
+                  Incluir esse custo no custo total (Resumo, Volume, Fornecedores, Modal/Rota e Cenários)
+                </label>
+                <span className="text-[11px] italic col-span-2" style={{ color: MUTED }}>
+                  Custo financeiro de manter o capital já investido (valor aduaneiro + tributos + despesas) parado em estoque pelo tempo informado,
+                  à taxa de oportunidade mensal acima. Sempre calculado e mostrado na aba Resumo — o toggle só decide se ele soma ao custo total
+                  usado nas comparações.
+                </span>
+              </Section>
             </div>
             </div>
 
@@ -1246,6 +1269,12 @@ export default function ImportCalculator() {
               <Row label={`ICMS ${state.estadoDestino} (por dentro)`} value={fmtBRL(result.ICMS)} indent />
               <Row label="Despesas aduaneiras" value={fmtBRL(result.despesasAduaneiras)} indent />
               <Row label="Despesas logísticas nacionais" value={fmtBRL(result.despesasLogisticas)} indent />
+              <Row
+                label={`Custo de estoque parado (${state.incluirCustoEstoque ? "incluído no total" : "NÃO incluído — ative o toggle em Dados"})`}
+                value={fmtBRL(result.custoEstoqueParado)}
+                indent
+                accent={!state.incluirCustoEstoque}
+              />
               <Row label="= Custo Total da Importação" value={fmtBRL(result.custoTotal)} bold accent />
               <Row label="÷ Quantidade → Custo Unitário Posto no Brasil" value={fmtBRL(result.custoUnitario)} bold accent />
             </div>
