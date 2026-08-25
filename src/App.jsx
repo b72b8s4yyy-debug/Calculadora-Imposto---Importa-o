@@ -4,6 +4,7 @@ import {
   BarChart, Bar, ReferenceLine
 } from "recharts";
 import { Ship, AlertTriangle, Anchor, Package, Plus, Trash2, Info, Search, DollarSign, CheckCircle2 } from "lucide-react";
+import { getClientId, loadAppState, saveAppState } from "./lib/supabase";
 
 // ---------------------------------------------------------------------------
 // Design tokens
@@ -359,6 +360,52 @@ export default function ImportCalculator() {
   const [suppliers, setSuppliers] = useState(DEFAULT_SUPPLIERS);
   const [tab, setTab] = useState("Dados");
   const [scenarioSelected, setScenarioSelected] = useState("base");
+  const [syncStatus, setSyncStatus] = useState("loading"); // loading | synced | saving | offline
+
+  const clientIdRef = useRef(null);
+  const loadedRef = useRef(false);
+
+  // Load saved data (if any) for this browser on first mount.
+  useEffect(() => {
+    let cancelled = false;
+    clientIdRef.current = getClientId();
+    loadAppState(clientIdRef.current)
+      .then((saved) => {
+        if (cancelled) return;
+        if (saved) {
+          if (saved.state) setState(saved.state);
+          if (saved.suppliers) setSuppliers(saved.suppliers);
+          if (saved.tab) setTab(saved.tab);
+          if (saved.scenarioSelected) setScenarioSelected(saved.scenarioSelected);
+        }
+        setSyncStatus("synced");
+      })
+      .catch((err) => {
+        console.error("Falha ao carregar dados salvos:", err);
+        if (!cancelled) setSyncStatus("offline");
+      })
+      .finally(() => {
+        if (!cancelled) loadedRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Persist changes to Supabase, debounced, once the initial load has settled.
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    setSyncStatus("saving");
+    const timer = setTimeout(() => {
+      saveAppState(clientIdRef.current, { state, suppliers, tab, scenarioSelected })
+        .then(() => setSyncStatus("synced"))
+        .catch((err) => {
+          console.error("Falha ao salvar dados:", err);
+          setSyncStatus("offline");
+        });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [state, suppliers, tab, scenarioSelected]);
 
   const set = (key) => (val) => setState((s) => ({ ...s, [key]: val }));
 
@@ -476,6 +523,20 @@ export default function ImportCalculator() {
           essa informação vem da TEC/TIPI (Receita Federal/Siscomex), que não estava no arquivo enviado, então essas alíquotas continuam editáveis manualmente em Dados → Tributos.
           Confirme tudo antes de qualquer operação real.
         </span>
+      </div>
+
+      {/* Sync status */}
+      <div className="flex items-center gap-1.5 px-4 pt-2 text-[11px]" style={{ color: MUTED }}>
+        <span
+          className="inline-block w-1.5 h-1.5 rounded-full"
+          style={{
+            background: syncStatus === "offline" ? RUST : syncStatus === "synced" ? OLIVE : "#C9A227",
+          }}
+        />
+        {syncStatus === "loading" && "Carregando dados salvos…"}
+        {syncStatus === "saving" && "Salvando…"}
+        {syncStatus === "synced" && "Dados salvos neste navegador"}
+        {syncStatus === "offline" && "Sem conexão com o servidor — alterações não estão sendo salvas"}
       </div>
 
       {/* Tabs */}
