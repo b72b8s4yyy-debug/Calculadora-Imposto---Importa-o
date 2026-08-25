@@ -435,7 +435,15 @@ function NCMCombo({ value, headingLabel, descLabel, onSelect }) {
   );
 }
 
-const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Cenários", "Fluxo de Caixa"];
+const TABS = ["Dados", "Resumo", "Formação", "Volume", "Preço & Margem", "Fornecedores", "Cenários", "Fluxo de Caixa", "Sensibilidade"];
+
+const SENSITIVITY_VARS = [
+  { key: "cotacao", nome: "Cotação do dólar" },
+  { key: "freteInternacional", nome: "Frete internacional" },
+  { key: "aliquotaII", nome: "Alíquota de II" },
+  { key: "aliquotaICMS", nome: "Alíquota de ICMS" },
+  { key: "precoUnitario", nome: "Preço do produto" },
+];
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -744,6 +752,19 @@ export default function ImportCalculator() {
   const toggleProductSort = (key) => {
     setProductSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   };
+
+  const sensitivityRows = useMemo(() => {
+    const pct = 0.15;
+    const rows = SENSITIVITY_VARS.map(({ key, nome }) => {
+      const baseVal = toNum(state[key]);
+      const custoLow = computeImport({ ...state, [key]: baseVal * (1 - pct) }).custoUnitario;
+      const custoHigh = computeImport({ ...state, [key]: baseVal * (1 + pct) }).custoUnitario;
+      const lo = Math.min(custoLow, custoHigh);
+      const hi = Math.max(custoLow, custoHigh);
+      return { nome, lo, hi, range: hi - lo };
+    });
+    return rows.sort((a, b) => b.range - a.range);
+  }, [state]);
 
   const scenarioResults = useMemo(
     () => SCENARIOS.map((sc) => ({ sc, r: computeImport(applyScenario(state, sc)) })),
@@ -1387,6 +1408,46 @@ export default function ImportCalculator() {
             <p className="text-xs mt-3" style={{ color: MUTED }}>
               Ajuste os prazos na aba Dados → Cronograma de pagamento. O capital de giro máximo é quanto você precisa ter em caixa (ou em uma linha
               de crédito) para sustentar a importação até a venda ser recebida.
+            </p>
+          </div>
+        )}
+
+        {tab === "Sensibilidade" && (
+          <div>
+            <p className="text-xs mb-3" style={{ color: MUTED }}>
+              Cada variável abaixo é isoladamente variada em ±15% (as demais ficam fixas no valor atual) para medir o impacto no custo unitário
+              final. Barras maiores indicam onde vale mais a pena negociar ou se proteger (ex.: hedge cambial).
+            </p>
+            <div style={{ width: "100%", height: 60 + sensitivityRows.length * 48 }}>
+              <ResponsiveContainer>
+                <BarChart data={sensitivityRows} layout="vertical" margin={{ left: 8, right: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={LINE} />
+                  <XAxis type="number" tick={{ fontSize: 12, fill: MUTED }} tickFormatter={(v) => `R$${Math.round(v)}`} />
+                  <YAxis type="category" dataKey="nome" width={140} tick={{ fontSize: 12, fill: MUTED }} />
+                  <Tooltip
+                    formatter={(v, name) => (name === "range" ? [fmtBRL(v), "Variação no custo unitário"] : [null, null])}
+                    {...CHART_TOOLTIP_STYLE}
+                  />
+                  <ReferenceLine x={result.custoUnitario} stroke={OLIVE} strokeDasharray="4 4" label={{ value: "Base", position: "top", fill: OLIVE, fontSize: 11 }} />
+                  <Bar dataKey="lo" stackId="s" fill="transparent" />
+                  <Bar dataKey="range" stackId="s" fill={RUST} radius={[0, 3, 3, 0]} name="range" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 rounded-sm border p-3" style={{ borderColor: LINE }}>
+              <h3 className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: NAVY }}>Faixa de custo unitário por variável (±15%)</h3>
+              {sensitivityRows.map((r, i) => (
+                <Row
+                  key={i}
+                  label={r.nome}
+                  value={`${fmtBRL(r.lo)} — ${fmtBRL(r.hi)}  (±${fmtBRL(r.range / 2)})`}
+                  bold={i === 0}
+                  accent={i === 0}
+                />
+              ))}
+            </div>
+            <p className="text-xs mt-3" style={{ color: MUTED }}>
+              Custo unitário base atual: {fmtBRL(result.custoUnitario)}. A linha tracejada no gráfico marca esse valor de referência.
             </p>
           </div>
         )}
